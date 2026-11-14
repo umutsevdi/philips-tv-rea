@@ -36,7 +36,7 @@ KEY_GROUPS = [
     ("Nav", ["Home", "Back", "Options", "Confirm", "Info", "Find", "Adjust"]),
     ("Arrows", ["▲", "▼", "◀", "▶"]),
     ("Media", ["PlayPause", "Stop", "FF", "Rew", "Next", "Prev"]),
-    ("TV", ["Source", "Ch+", "Ch-", "ChList", "TXT", "Sub"]),
+    ("TV", ["Source", "Ch+", "Ch-", "List", "TXT", "Sub"]),
     ("Colour", ["Red", "Green", "Yellow", "Blue"]),
     ("Digits", [f"Digit{i}" for i in range(10)]),
 ]
@@ -44,7 +44,7 @@ KEY_GROUPS = [
 LABEL_TO_KEY = {
     "▲": "CursorUp", "▼": "CursorDown", "◀": "CursorLeft", "▶": "CursorRight",
     "FF": "FastForward", "Rew": "Rewind", "Next": "Next", "Prev": "Previous",
-    "Ch+": "ChannelStepUp", "Ch-": "ChannelStepDown", "ChList": "ChannelList",
+    "Ch+": "ChannelStepUp", "Ch-": "ChannelStepDown", "List": "List",
     "TXT": "Teletext", "Sub": "Subtitle", "Red": "RedColour", "Green": "GreenColour",
     "Yellow": "YellowColour", "Blue": "BlueColour",
     "ArrowUp": "ArrowUp", "ArrowDown": "ArrowDown", "ArrowLeft": "ArrowLeft",

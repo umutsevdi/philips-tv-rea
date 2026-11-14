@@ -124,6 +124,24 @@ LLM agent.
 | Source/app switching | ❌ | endpoints exist but are feature-disabled in firmware |
 | Power state | ❌ | POST accepted but silently ignored; use the Standby key instead |
 
+## Key names (verified against the TV)
+
+| Action | Key name |
+|---|---|
+| Home-screen navigation | `CursorUp` `CursorDown` `CursorLeft` `CursorRight` |
+| In-app navigation | `ArrowUp` `ArrowDown` `ArrowLeft` `ArrowRight` |
+| Channel stepping (live TV) | `ChannelStepUp` `ChannelStepDown` |
+| Channel list | `List` |
+| Colour actions | `RedColour` `GreenColour` `YellowColour` `BlueColour` (context-dependent — e.g. `GreenColour` toggles channel favouriting in the channel list) |
+| Media | `PlayPause` `Stop` `FastForward` `Rewind` `Next` `Previous` |
+| Misc | `Home` `Back` `Options` `Confirm` `Info` `Find` `Adjust` `Source` `Teletext` `Subtitle` `Dot` `Digit0-9` |
+| Power | `Standby` (actually powers off) |
+
+Names matter: the same physical button maps to different JointSpace key
+names depending on the target UI (`Cursor*` for the Titan web app,
+`Arrow*` for in-app focus lists). Discovered by brute-forcing 46 candidate
+names against a live TV.
+
 ## Troubleshooting
 
 - **Connection refused / nothing answers** — the TV's API daemon sometimes
