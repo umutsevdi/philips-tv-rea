@@ -1,0 +1,29 @@
+[project]
+name = "philips-tv-rea"
+version = "0.1.0"
+description = "Reverse-engineered JointSpace v6 controller for TPV-built Philips Saphi TVs"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [{ name = "umutsevdi" }]
+keywords = ["philips", "saphi", "jointspace", "smart-tv", "reverse-engineering"]
+classifiers = [
+    "Environment :: Console",
+    "Environment :: X11 Applications",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX",
+    "Programming Language :: Python :: 3",
+    "Topic :: Home Automation",
+    "Topic :: System :: Networking",
+]
+
+[project.scripts]
+tvctl = "tvctl:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["philips_tv"]
+py-modules = ["tvctl"]
