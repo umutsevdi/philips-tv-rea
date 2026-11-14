@@ -74,6 +74,23 @@ class PhilipsTV:
         cur = self.volume()
         return self.set_volume(cur.get("current", 0), muted)
 
+    # -- pointer (vestigial on non-touchpad models: accepted, never rendered) --
+
+    def pointer(self) -> dict:
+        resp = self.transport.get("/6/input/pointer")
+        return resp.json() or {}
+
+    def pointer_move(self, x=None, y=None, xdelta=None, ydelta=None) -> bool:
+        """Move the on-screen pointer. x/y = absolute pixels (or 0-1 fractional
+        if given as floats), xdelta/ydelta = relative glide."""
+        body = {}
+        if x is not None: body["x"] = x
+        if y is not None: body["y"] = y
+        if xdelta is not None: body["xdelta"] = xdelta
+        if ydelta is not None: body["ydelta"] = ydelta
+        resp = self.transport.post("/6/input/pointer", body)
+        return resp.status == 200
+
     # -- remote keys -----------------------------------------------
 
     def send_key(self, key: str) -> bool:

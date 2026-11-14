@@ -27,6 +27,7 @@ import json
 import re
 import secrets
 import ssl
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
@@ -74,6 +75,11 @@ class JointSpaceTransport:
         self.timeout = timeout
         self.credentials: Optional[Credentials] = None
         self.log_fn: Optional[Callable[[str], None]] = None
+        # Request gate: the daemon crashes under rapid requests (observed: ~4
+        # pointer posts per second killed all /6/* paths until power cycle).
+        self._gate = threading.Lock()
+        self._last_request = 0.0
+        self.MIN_SPACING = 0.7
         self._ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         self._ctx.check_hostname = False
         self._ctx.verify_mode = ssl.CERT_NONE
@@ -106,6 +112,11 @@ class JointSpaceTransport:
         """
         payload = json.dumps(body).encode() if body is not None else None
         started = time.monotonic()
+        with self._gate:
+            wait = self.MIN_SPACING - (time.monotonic() - self._last_request)
+            if wait > 0:
+                time.sleep(wait)
+            self._last_request = time.monotonic()
         self._log(f"→ {method} {path}" + (f" {json.dumps(body)[:80]}" if payload else ""))
         conn = self._connect()
         try:

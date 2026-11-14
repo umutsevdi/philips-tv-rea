@@ -127,6 +127,26 @@ def cmd_channels(args):
 
 
 
+def cmd_pointer(args):
+    tv = get_tv()
+    if not args.coords:
+        print(json.dumps(tv.pointer()))
+        return
+    x, y = args.coords
+    try:
+        x = float(x); y = float(y)
+    except ValueError:
+        print("coords must be numbers"); sys.exit(1)
+    ok = tv.pointer_move(x, y)
+    print("OK" if ok else "FAILED")
+
+
+def cmd_click(args):
+    tv = get_tv()
+    ok = tv.send_key("Confirm")
+    print("clicked" if ok else "FAILED")
+
+
 def cmd_post(args):
     tv = get_tv()
     resp = tv.transport.post(args.path, json.loads(args.body))
@@ -161,6 +181,13 @@ def main():
     p = sub.add_parser("key")
     p.add_argument("key")
     p.set_defaults(fn=cmd_key)
+
+    p = sub.add_parser("pointer", help="move pointer: pointer X Y (pixels or 0-1)")
+    p.add_argument("coords", nargs="*", default=None)
+    p.set_defaults(fn=cmd_pointer)
+
+    p = sub.add_parser("click", help="click at current pointer position (Confirm key)")
+    p.set_defaults(fn=cmd_click)
 
     p = sub.add_parser("post")
     p.add_argument("path")

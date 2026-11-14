@@ -34,7 +34,7 @@ SANS_BIG = ("DejaVuSans", 22, "bold")
 
 KEY_GROUPS = [
     ("Nav", ["Home", "Back", "Options", "Confirm", "Info", "Find", "Adjust"]),
-    ("Arrows", ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]),
+    ("Arrows (in apps)", ["▲", "▼", "◀", "▶"]),
     ("Media", ["PlayPause", "Stop", "FF", "Rew", "Next", "Prev"]),
     ("TV", ["Source", "Ch+", "Ch-", "ChList", "TXT", "Sub"]),
     ("Colour", ["Red", "Green", "Yellow", "Blue"]),
@@ -333,6 +333,8 @@ class TVGui:
                  lambda ok: self.status_var.set(f"muted: {muted}" if ok else "mute failed"))
 
     def _send_key(self, label):
+        # NOTE: arrows do nothing on the Titan home screen (web app, no focus
+        # model) — they work inside apps with their own focus lists.
         key = LABEL_TO_KEY.get(label, label)
         self._bg(lambda: self.tv.send_key(key),
                  lambda ok: self.status_var.set(f"{key}: {'sent' if ok else 'rejected'}"))

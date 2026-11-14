@@ -115,7 +115,8 @@ LLM agent.
 | Capability | Works | Notes |
 |---|---|---|
 | Volume + mute | ✅ | read and write |
-| Remote keys | ✅ | all 40 keys accepted; navigation keys act inside menus/apps |
+| Remote keys | ✅ | all 40 keys accepted (arrows are no-ops on the home screen — see pointer) |
+| Home-screen navigation | ❌ | web app has no focus model; pointer API is vestigial — use the physical remote |
 | System info | ✅ | serial/firmware decrypted (AES-CBC with the firmware's shared key) |
 | Context (what's on screen) | ✅ | |
 | Settings menu tree | ✅ | read-only; writing values needs the TV's own settings UI open |
@@ -224,6 +225,25 @@ never emits a challenge for empty bodies, so curl's two-pass digest dance
 for POST methods never completes. Any client that sends the body on the
 first attempt (like this library) is unaffected.
 
+## Home-screen navigation limits (arrow keys, pointer)
+
+The home screen is a web app **without a focus model**: `ArrowUp/Down/Left/
+Right` return HTTP 200 but are ignored there — there is no "selected tile"
+for them to move. They do work inside apps that have their own focus lists
+(settings, etc.).
+
+The `/6/input/pointer` endpoint exists in the firmware and answers
+`{"status": "visible"}`, accepting absolute, fractional and delta
+coordinates — but on models without a touchpad remote (like the
+40PFS6000) no cursor is rendered and moves have no visible effect. It is
+vestigial code shared with higher-end models.
+
+**Bottom line:** the home screen can only be navigated with the physical
+remote (or the Titan OS mobile app, which uses a separate MQTT protocol on
+port 8883 — a potential future project). Everything else in this tool —
+volume, keys that the firmware handles, system info, deblocking — is
+unaffected.
+
 ## The home screen is a cloud web app
 
 The home page streams from `https://app.titanos.tv/` (CloudFront). Titan
@@ -275,7 +295,7 @@ scope-gated.
 philips_tv/
   transport.py   HTTPS + manual digest auth, single-connection support
   pairing.py     pair request/grant flow
-  discovery.py   SSDP + subnet discovery
+  discovery.py   mDNS/SSDP/subnet discovery (TVs announce _philipstv_s_rpc._tcp)
   tv.py          endpoint wrappers, AES decryption, known keys
   config.py      credential storage (~/.config/philips-tv-rea)
   gui.py         tkinter control console
