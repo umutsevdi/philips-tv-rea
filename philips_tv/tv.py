@@ -13,7 +13,10 @@ AUTH_SHARED_KEY = base64.b64decode(
 
 # Remote keys accepted by POST /6/input/key on this build (verified 200 for all).
 KNOWN_KEYS = [
-    "Confirm", "Home", "Back", "Options", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+    "Confirm", "Home", "Back", "Options",
+    # Titan OS home screen navigates with Cursor* names (Arrow* is ignored there)
+    "CursorUp", "CursorDown", "CursorLeft", "CursorRight",
+    "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
     "VolumeUp", "VolumeDown", "Mute", "PlayPause", "Stop", "FastForward", "Rewind",
     "Next", "Previous", "Dot", "Info", "Source", "ChannelStepUp", "ChannelStepDown",
     "ChannelList", "Teletext", "Subtitle", "Find", "Adjust",

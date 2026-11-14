@@ -16,8 +16,9 @@ Usage:
   tvctl gui                       launch the desktop GUI
 
 Common keys: Standby Home Back Options Confirm VolumeUp VolumeDown Mute
-             ArrowUp ArrowDown ArrowLeft ArrowRight PlayPause Stop
-             FastForward Rewind Source Digit0-9
+             CursorUp CursorDown CursorLeft CursorRight (home screen nav)
+             ArrowUp ArrowDown ArrowLeft ArrowRight (in-app nav)
+             PlayPause Stop FastForward Rewind Source Digit0-9
 """
 import argparse
 import json

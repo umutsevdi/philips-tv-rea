@@ -115,8 +115,8 @@ LLM agent.
 | Capability | Works | Notes |
 |---|---|---|
 | Volume + mute | ✅ | read and write |
-| Remote keys | ✅ | all 40 keys accepted (arrows are no-ops on the home screen — see pointer) |
-| Home-screen navigation | ❌ | web app has no focus model; pointer API is vestigial — use the physical remote |
+| Remote keys | ✅ | 44 keys mapped; `Cursor*` names navigate the home screen, `Arrow*` work in apps |
+| Home-screen navigation | ✅ | `CursorUp/Down/Left/Right` key names move the focus |
 | System info | ✅ | serial/firmware decrypted (AES-CBC with the firmware's shared key) |
 | Context (what's on screen) | ✅ | |
 | Settings menu tree | ✅ | read-only; writing values needs the TV's own settings UI open |
@@ -225,24 +225,25 @@ never emits a challenge for empty bodies, so curl's two-pass digest dance
 for POST methods never completes. Any client that sends the body on the
 first attempt (like this library) is unaffected.
 
-## Home-screen navigation limits (arrow keys, pointer)
+## Home-screen navigation: the `Cursor*` key names
 
-The home screen is a web app **without a focus model**: `ArrowUp/Down/Left/
-Right` return HTTP 200 but are ignored there — there is no "selected tile"
-for them to move. They do work inside apps that have their own focus lists
-(settings, etc.).
+The home screen web app **does** have a focus model — it just doesn't
+listen for `ArrowUp/Down/Left/Right`. The key names it maps are
+**`CursorUp` / `CursorDown` / `CursorLeft` / `CursorRight`** (discovered
+by brute-forcing 46 candidate key names while watching the screen, then
+confirming with a Z-pattern test the focus visibly traced).
 
-The `/6/input/pointer` endpoint exists in the firmware and answers
-`{"status": "visible"}`, accepting absolute, fractional and delta
-coordinates — but on models without a touchpad remote (like the
-40PFS6000) no cursor is rendered and moves have no visible effect. It is
-vestigial code shared with higher-end models.
+`Arrow*` names remain useful: they work inside apps that have their own
+in-app focus (settings lists, etc.).
 
-**Bottom line:** the home screen can only be navigated with the physical
-remote (or the Titan OS mobile app, which uses a separate MQTT protocol on
-port 8883 — a potential future project). Everything else in this tool —
-volume, keys that the firmware handles, system info, deblocking — is
-unaffected.
+The `/6/input/pointer` endpoint (absolute/delta coordinates) also exists
+and is accepted — but on models without a touchpad remote no cursor is
+rendered, so it has no visible effect. It is vestigial code shared with
+higher-end models.
+
+**Bottom line:** full home-screen navigation works over JointSpace with
+`Cursor*` key names. `tvctl key CursorRight` and the GUI arrow pad both
+use them.
 
 ## The home screen is a cloud web app
 

@@ -34,7 +34,7 @@ SANS_BIG = ("DejaVuSans", 22, "bold")
 
 KEY_GROUPS = [
     ("Nav", ["Home", "Back", "Options", "Confirm", "Info", "Find", "Adjust"]),
-    ("Arrows (in apps)", ["▲", "▼", "◀", "▶"]),
+    ("Arrows", ["▲", "▼", "◀", "▶"]),
     ("Media", ["PlayPause", "Stop", "FF", "Rew", "Next", "Prev"]),
     ("TV", ["Source", "Ch+", "Ch-", "ChList", "TXT", "Sub"]),
     ("Colour", ["Red", "Green", "Yellow", "Blue"]),
@@ -42,6 +42,7 @@ KEY_GROUPS = [
 ]
 # map short GUI labels back to API key names
 LABEL_TO_KEY = {
+    "▲": "CursorUp", "▼": "CursorDown", "◀": "CursorLeft", "▶": "CursorRight",
     "FF": "FastForward", "Rew": "Rewind", "Next": "Next", "Prev": "Previous",
     "Ch+": "ChannelStepUp", "Ch-": "ChannelStepDown", "ChList": "ChannelList",
     "TXT": "Teletext", "Sub": "Subtitle", "Red": "RedColour", "Green": "GreenColour",
