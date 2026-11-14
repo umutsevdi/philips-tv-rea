@@ -6,12 +6,12 @@ live here; they use different methods and different docs.
 | Part | Method | Docs |
 |---|---|---|
 | Firmware API (JointSpace, port 1926) | black-box testing against a live TV | this file |
-| Home app (app.titanos.tv launcher) | static analysis of its JS bundles | [`home/docs/`](home/docs/) |
+| TitanOS app (app.titanos.tv launcher) | static analysis of its JS bundles | [`titanos/docs/`](titanos/docs/) |
 
 If you work on the firmware side, read this file. If you work on the home
-app side, start with the numbered docs in [`home/docs/`](home/docs/). The two sides meet in one place: the launcher loads from the
+app side, start with the numbered docs in [`titanos/docs/`](titanos/docs/). The two sides meet in one place: the launcher loads from the
 network, so blocking `app.titanos.tv` at DNS level removes the ads (see
-[home/docs/05-ads-and-tracking.md](home/docs/05-ads-and-tracking.md)).
+[titanos/docs/05-ads-and-tracking.md](titanos/docs/05-ads-and-tracking.md)).
 
 # Part 1: Firmware API
 

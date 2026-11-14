@@ -5,7 +5,7 @@ Reverse engineering a Philips TV, split in two parts:
 1. **Firmware API** (this repo). The JointSpace interface on port 1926:
    pairing, key sending, volume, decrypted system info. Shipped as a working
    Python app with a GUI console and a scriptable CLI.
-2. **Home app** ([`home/docs/`](home/docs/)): the launcher at
+2. **TitanOS app** ([`titanos/docs/`](titanos/docs/)): the launcher at
    `app.titanos.tv` that renders your home screen, picks your ads, and
    launches your apps. Documented from static analysis of its own JavaScript:
    how apps launch, how the ad pipeline works, and what a replacement
@@ -46,12 +46,12 @@ Requirements: Python 3.9+ and `openssl`. No packages to install.
 The home screen loads from `app.titanos.tv`. Block that domain in any DNS
 filter (Pi-hole, AdGuard Home, NextDNS) and the sponsored banners disappear.
 Live TV, HDMI inputs and streaming apps are unaffected. The
-[ads and tracking doc](home/docs/05-ads-and-tracking.md) lists every ad
+[ads and tracking doc](titanos/docs/05-ads-and-tracking.md) lists every ad
 source and tracker endpoint the launcher contacts.
 
 ## Documentation
 
-The docs are numbered by topic in [`home/docs/`](home/docs/) (architecture,
+The docs are numbered by topic in [`titanos/docs/`](titanos/docs/) (architecture,
 firmware API, launch model, backend, ads, device identity, MQTT, replacement
 roadmap, open questions). Firmware protocol details live in
 [AGENTS.md](AGENTS.md).

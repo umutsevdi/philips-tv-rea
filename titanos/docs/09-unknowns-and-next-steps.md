@@ -68,10 +68,29 @@ without replacing the page. Test: Phase 0 probe + QA mode.
 Dispatch mechanics are known; partner URL grammars are not (Netflix cert
 flow, Prime `gti=`, DAZN `{TargetName}`). Capture real deeplinks at runtime.
 
+## U11: Launch URL of an installed store app [?]
+
+The app store catalog publishes bundle_id (e.g. `ibo_player`) but not the URL
+the launcher uses to open the app. Options: read it from `/apps/<id>` or the
+device app list via a probe page, or capture it while the stock launcher opens
+the app. Needed for tiling store IPTV players (08).
+
+## U12: What does the stock store's Install actually call? [?]
+
+Candidates: a backend POST recording the app on the device, or an OIPF
+app-manager bridge (`application/oipfApplicationManager` is instantiated in
+the device API, but the observed code only uses it for keyset registration).
+Test: capture TV traffic while installing a store app, or set a breakpoint on
+the store page's button handler. Answers whether a replacement launcher needs
+any extra call for its own on-demand catalog (08) or whether a local config
+entry is enough.
+
 ## Recommended order
 
 1. U1 probe page: minutes, zero risk, forks the whole plan
 2. U7: static read of the service worker
-3. U3/U4: one mitmproxy session, needs the TV to trust your CA; if that
-   fails, re-read the bundles
-4. U8 only if JVC and other brands matter
+3. U11: install one IPTV player in the TV store, extract its URL (one probe
+   run)
+4. U12/U3/U4: one mitmproxy session answers all three; needs the TV to trust
+   your CA; if that fails, re-read the bundles
+5. U8 only if JVC and other brands matter

@@ -71,7 +71,18 @@ Special cases:
   are FVP markers, excluded from position sync.
 - The locally-installed probe `Tr()` also hardcodes `UKTV Play`.
 
-## Payment IPC [O]
+## IPTV players [O]
+
+There is no native IPTV client in the firmware; the bundles contain no M3U
+parser or Xtream client. IPTV players on Titan OS (Top IPTV Smarters, IBO
+Player, IPTV Smarters Player, M3U IPTV, Duplex Play, Tivigo, Smart STB, ...)
+are tier-3 webapps from the Titan app store: the store install registers the
+app with the firmware, and the launcher receives its launch URL through the
+apps API like any other tile. The public catalog (partners.titanos.tv) exposes
+bundle_id and store_id per app but not the launch URL; the URL must be read
+from the device (09, U11).
+
+## Payment IPC [O
 
 `set-options` action → `BrowserIpcPluginClass.setOptions(amount, options)`:
 in-app purchases go through the browser plugin, not fetch.
