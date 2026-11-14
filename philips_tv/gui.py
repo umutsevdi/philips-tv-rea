@@ -1,9 +1,8 @@
 """Tkinter control console for philips-tv-rea.
 
-Layout (user spec): 
-  column 1: TV info bar, standby, connect
-  column 2: compact keypads, volume slider
-  column 3: tall activity log
+Design: AV-receiver front panel. Dark slate surfaces, keycap-style remote
+buttons, one warm-amber accent, monospace activity log. Every request to
+the TV is logged with timestamp, status and latency.
 """
 import json
 import queue
@@ -13,258 +12,81 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from .tv import PhilipsTV, KNOWN_KEYS
-from .transport import JointSpaceTransport
 from .discovery import discover
 from .pairing import pair as pair_flow
 from . import config
+from .transport import JointSpaceTransport
 
-BG = "#16191D"
-PANEL = "#1E2227"
-PANEL_EDGE = "#2B3037"
-FG = "#D6DAE0"
-DIM = "#8A9199"
-AMBER = "#E8A33D"
-OK = "#7FB069"
-ERR = "#E06C5B"
-MONO = ("DejaVuSansMono", 9)
+# ---- palette: dark hardware -------------------------------------------------
+BG        = "#14171B"
+PANEL     = "#1C2127"
+RAISED    = "#232930"
+KEYCAP    = "#2B323B"
+KEYCAP_HI = "#39424D"
+EDGE      = "#2A3038"
+EDGE_SOFT = "#20252B"
+FG        = "#C9CFD6"
+BRIGHT    = "#E8ECF1"
+DIM       = "#7A828C"
+AMBER     = "#E5A84B"
+AMBER_DIM = "#5A4A2E"
+OK        = "#6FBF8F"
+ERR       = "#D9705F"
+LOG_BG    = "#101316"
+
+MONO       = ("DejaVuSansMono", 10)
 MONO_SMALL = ("DejaVuSansMono", 8)
-SANS = ("DejaVuSans", 9)
-SANS_BOLD = ("DejaVuSans", 9, "bold")
-SANS_BIG = ("DejaVuSans", 22, "bold")
+SANS       = ("DejaVuSans", 10)
+SANS_SMALL = ("DejaVuSans", 9)
+SANS_BOLD  = ("DejaVuSans", 10, "bold")
+DISPLAY    = ("DejaVuSans", 34, "bold")
 
 KEY_GROUPS = [
-    ("Nav", ["Home", "Back", "Options", "Confirm", "Info", "Find", "Adjust"]),
-    ("Arrows", ["▲", "▼", "◀", "▶"]),
-    ("Media", ["PlayPause", "Stop", "FF", "Rew", "Next", "Prev"]),
-    ("TV", ["Source", "Ch+", "Ch-", "List", "TXT", "Sub"]),
-    ("Colour", ["Red", "Green", "Yellow", "Blue"]),
-    ("Digits", [f"Digit{i}" for i in range(10)]),
+    # (group, [(label, api_key)])
+    ("navigation", [
+        ("Home", "Home"), ("Back", "Back"), ("Options", "Options"),
+        ("Confirm", "Confirm"), ("Info", "Info"), ("Find", "Find"), ("Adjust", "Adjust"),
+    ]),
+    ("media", [
+        ("⏵", "PlayPause"), ("⏹", "Stop"), ("⏩", "FastForward"), ("⏪", "Rewind"),
+        ("⏭", "Next"), ("⏮", "Previous"),
+    ]),
+    ("channels", [
+        ("Ch +", "ChannelStepUp"), ("Ch −", "ChannelStepDown"), ("List", "List"),
+        ("Source", "Source"), ("TXT", "Teletext"), ("Sub", "Subtitle"),
+    ]),
+    ("colour", [
+        ("●", "RedColour"), ("●", "GreenColour"), ("●", "YellowColour"), ("●", "BlueColour"),
+    ]),
 ]
-# map short GUI labels back to API key names
-LABEL_TO_KEY = {
-    "▲": "CursorUp", "▼": "CursorDown", "◀": "CursorLeft", "▶": "CursorRight",
-    "FF": "FastForward", "Rew": "Rewind", "Next": "Next", "Prev": "Previous",
-    "Ch+": "ChannelStepUp", "Ch-": "ChannelStepDown", "List": "List",
-    "TXT": "Teletext", "Sub": "Subtitle", "Red": "RedColour", "Green": "GreenColour",
-    "Yellow": "YellowColour", "Blue": "BlueColour",
-    "ArrowUp": "ArrowUp", "ArrowDown": "ArrowDown", "ArrowLeft": "ArrowLeft",
-    "ArrowRight": "ArrowRight",
-}
+COLOUR_KEY_COLOURS = {"RedColour": "#D9705F", "GreenColour": "#6FBF8F",
+                      "YellowColour": "#E5C84B", "BlueColour": "#5B8DD9"}
 
 
-class TVGui:
-    def __init__(self, tv: PhilipsTV):
-        self.tv = tv
-        self.transport = tv.transport
-        self.root = tk.Tk()
-        self.root.title("philips-tv-rea")
-        self.root.configure(bg=BG)
-        self.root.geometry("1240x780")
-        self.root.minsize(1024, 640)
-        self._style()
-        cfg = config.load()
-        if not cfg:
-            if not self._first_run_setup():
-                raise SystemExit(1)
-        self._build()
-        self.transport.log_fn = self.log
-        self.vol_sending = False
-        self._poll()
+class ActivityLog(tk.Frame):
+    """Monospace activity console; the transport's log_fn feeds it."""
 
-    def _first_run_setup(self):
-        """Discover TVs on the LAN, pair with the chosen one."""
-        dlg = tk.Toplevel(self.root)
-        dlg.title("Pair a TV")
-        dlg.configure(bg=BG)
-        dlg.geometry("460x260")
-        dlg.grab_set()
-        tk.Label(dlg, text="No paired TV found.", bg=BG, fg=FG,
-                 font=SANS_BOLD).pack(anchor="w", padx=16, pady=(16, 4))
-        tk.Label(dlg, text="Searching the local network...", bg=BG, fg=DIM,
-                 font=MONO_SMALL).pack(anchor="w", padx=16)
-        result = {"tv": None}
-
-        listbox = None
-
-        def do_pair():
-            sel = result["tv"]
-            if not sel:
-                return
-            pin_win = tk.Toplevel(dlg)
-            pin_win.title("PIN")
-            pin_win.configure(bg=BG)
-            tk.Label(pin_win, text="A 4-digit PIN should now show on the TV.", bg=BG,
-                     fg=FG, font=SANS).pack(padx=16, pady=(16, 4))
-            pin_entry = tk.Entry(pin_win, font=MONO, width=8, show="",
-                                 insertbackground=FG, bg="#101316", fg=FG,
-                                 relief="flat")
-            pin_entry.pack(padx=16, pady=4)
-            pin_entry.focus_set()
-
-            def confirm():
-                pin = pin_entry.get().strip()
-                pin_win.destroy()
-                transport = JointSpaceTransport(sel.host)
-                try:
-                    creds = pair_flow(transport, device_name="philips-tv-rea",
-                                      pin_callback=lambda: pin)
-                    config.save(sel.host, creds)
-                    dlg.destroy()
-                    messagebox.showinfo("Paired", f"Paired with {sel.model or sel.host}")
-                except Exception as exc:  # noqa: BLE001
-                    messagebox.showerror("Pairing failed", str(exc))
-
-            ttk.Button(pin_win, text="Pair", command=confirm).pack(pady=8)
-
-        def on_select(event):
-            sel = listbox.curselection()
-            if sel:
-                result["tv"] = found_tvs[sel[0]]
-                do_pair()
-
-        def run_discovery():
-            found = discover(timeout=4)
-            if not found:
-                return
-            found_tvs[:] = found
-            listbox.delete(0, tk.END)
-            for t in found:
-                listbox.insert(tk.END, f"{t.model or 'unknown TV'}  ({t.host})")
-
-        found_tvs = []
-        listbox = tk.Listbox(dlg, bg="#101316", fg=FG, font=MONO_SMALL,
-                             relief="flat", selectbackground="#333A42", height=6)
-        listbox.pack(fill="both", expand=True, padx=16, pady=8)
-        listbox.bind("<Double-1>", on_select)
-        ttk.Button(dlg, text="Search again", command=run_discovery).pack(pady=(0, 12))
-        threading.Thread(target=lambda: dlg.after(0, run_discovery), daemon=True).start()
-        self.root.wait_window(dlg)
-        return config.load() is not None
-
-    def _style(self):
-        s = ttk.Style()
-        s.theme_use("clam")
-        s.configure("TFrame", background=BG)
-        s.configure("Panel.TFrame", background=PANEL)
-        s.configure("TLabel", background=BG, foreground=FG, font=SANS)
-        s.configure("Dim.TLabel", background=BG, foreground=DIM, font=MONO_SMALL)
-        s.configure("Amber.TLabel", background=BG, foreground=AMBER, font=SANS_BOLD)
-        s.configure("TButton", background=PANEL, foreground=FG, font=SANS)
-        s.map("TButton", background=[("active", "#2C323A")])
-        s.configure("Pad.TButton", background="#2A2F36", foreground=FG,
-                    font=MONO_SMALL)
-        s.map("Pad.TButton", background=[("active", "#3A424D"), ("pressed", "#5A4720")])
-        s.configure("Warn.TButton", background="#3A2A28", foreground=ERR, font=SANS)
-        s.map("Warn.TButton", background=[("active", "#4A332F")])
-        s.configure("TCheckbutton", background=BG, foreground=FG)
-        s.configure("Horizontal.TScale", background=PANEL, troughcolor="#101316",
-                    lightcolor=AMBER, darkcolor=AMBER)
-        s.configure("Status.TLabel", background=PANEL, foreground=DIM, font=MONO_SMALL)
-
-    def _build(self):
-        main = ttk.Frame(self.root)
-        main.pack(fill="both", expand=True)
-        main.columnconfigure(0, weight=0)
-        main.columnconfigure(1, weight=0)
-        main.columnconfigure(2, weight=1)   # log takes remaining width
-        main.rowconfigure(0, weight=1)
-
-        # ================= column 1: TV info + standby + connect =================
-        left = tk.Frame(main, bg=PANEL, width=230)
-        left.grid(row=0, column=0, sticky="nsew")
-        left.pack_propagate(False)
-
-        tk.Label(left, text="philips-tv-rea", bg=PANEL, fg=AMBER,
-                 font=SANS_BOLD).pack(anchor="w", padx=14, pady=(14, 0))
-        tk.Label(left, text="JointSpace v6 console", bg=PANEL, fg=DIM,
-                 font=MONO_SMALL).pack(anchor="w", padx=14, pady=(0, 12))
-        tk.Frame(left, bg=PANEL_EDGE, height=1).pack(fill="x")
-
-        self.info_vars = {}
-        for label in ("name", "model", "serialnumber", "softwareversion", "api_version"):
-            row = tk.Frame(left, bg=PANEL)
-            row.pack(fill="x", padx=14, pady=3)
-            tk.Label(row, text=label, bg=PANEL, fg=DIM, font=MONO_SMALL,
-                     width=13, anchor="w").pack(side="left")
-            var = tk.StringVar(value="…")
-            tk.Label(row, textvariable=var, bg=PANEL, fg=FG, font=MONO_SMALL,
-                     anchor="w").pack(side="left", fill="x", expand=True)
-            self.info_vars[label] = var
-
-        tk.Frame(left, bg=PANEL_EDGE, height=1).pack(fill="x", pady=10)
-
-        tk.Label(left, text="Context", bg=PANEL, fg=AMBER, font=SANS_BOLD,
-                 anchor="w").pack(fill="x", padx=14, pady=(0, 4))
-        self.ctx_var = tk.StringVar(value="…")
-        tk.Label(left, textvariable=self.ctx_var, bg=PANEL, fg=FG, font=MONO_SMALL,
-                 justify="left", anchor="nw", wraplength=200).pack(fill="x", padx=14)
-
-        # connect / standby pinned to bottom of col 1
-        bottom = tk.Frame(left, bg=PANEL)
-        bottom.pack(side="bottom", fill="x", pady=10)
-        self.conn_var = tk.StringVar(value="● connected")
-        tk.Label(bottom, textvariable=self.conn_var, bg=PANEL, fg=OK,
-                 font=MONO_SMALL, anchor="w").pack(fill="x", padx=14, pady=(0, 8))
-        ttk.Button(bottom, text="Reconnect", command=self._on_reconnect).pack(
-            fill="x", padx=14, pady=(0, 4))
-        ttk.Button(bottom, text="Standby", style="Warn.TButton",
-                   command=self._on_standby).pack(fill="x", padx=14)
-
-        # ================= column 2: keypads + volume =================
-        mid = tk.Frame(main, bg=BG)
-        mid.grid(row=0, column=1, sticky="nsew", padx=14, pady=10)
-
-        vol = tk.Frame(mid, bg=BG)
-        vol.pack(fill="x", pady=(0, 10))
-        self.vol_display = tk.Label(vol, text="--", bg=BG, fg=AMBER, font=SANS_BIG)
-        self.vol_display.pack(side="left")
-        self.muted_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(vol, text="Mute", variable=self.muted_var,
-                        command=self._on_mute).pack(side="left", padx=(12, 0))
-        self.vol_value = tk.IntVar(value=33)
-        self.vol_scale = ttk.Scale(mid, from_=0, to=60, variable=self.vol_value,
-                                   orient="horizontal", command=self._on_slider)
-        self.vol_scale.pack(fill="x", pady=(0, 12))
-
-        for group, keys in KEY_GROUPS:
-            box = tk.LabelFrame(mid, text=group, bg=BG, fg=DIM, font=MONO_SMALL)
-            box.pack(fill="x", pady=(0, 6))
-            cols = 6 if len(keys) == 10 else (7 if group == "Nav" else (4 if len(keys) > 4 else len(keys)))
-            for ki, label in enumerate(keys):
-                btn = ttk.Button(box, text=label, width=6, style="Pad.TButton",
-                                 command=lambda l=label: self._send_key(l))
-                btn.grid(row=ki // cols, column=ki % cols, padx=1, pady=1, sticky="ew")
-            for c in range(cols):
-                box.columnconfigure(c, weight=1)
-
-        # ================= column 3: tall log =================
-        right = tk.Frame(main, bg=PANEL)
-        right.grid(row=0, column=2, sticky="nsew", padx=(1, 0))
-        header = tk.Frame(right, bg=PANEL)
-        header.pack(fill="x")
-        tk.Label(header, text="Activity", bg=PANEL, fg=AMBER,
-                 font=SANS_BOLD).pack(side="left", padx=(10, 0), pady=(8, 4))
-        self.count_var = tk.StringVar(value="0 calls")
-        tk.Label(header, textvariable=self.count_var, bg=PANEL, fg=DIM,
-                 font=MONO_SMALL).pack(side="right", padx=10, pady=(8, 4))
-        self.text = tk.Text(right, bg="#101316", fg=FG, font=MONO_SMALL,
+    def __init__(self, master):
+        super().__init__(master, bg=PANEL)
+        head = tk.Frame(self, bg=PANEL)
+        head.pack(fill="x")
+        tk.Label(head, text="Activity", bg=PANEL, fg=AMBER,
+                 font=SANS_BOLD).pack(side="left", padx=12, pady=(8, 4))
+        self.count = tk.StringVar(value="0")
+        tk.Label(head, textvariable=self.count, bg=PANEL, fg=DIM,
+                 font=MONO_SMALL).pack(side="right", padx=12, pady=(8, 4))
+        self.text = tk.Text(self, bg=LOG_BG, fg=FG, font=MONO_SMALL,
                             relief="flat", bd=0, wrap="none",
-                            insertbackground=FG, selectbackground="#333A42")
+                            insertbackground=FG, selectbackground="#333A42",
+                            padx=10, pady=6)
         self.text.pack(fill="both", expand=True, padx=8, pady=(0, 8))
-        self.text.tag_configure("req", foreground=AMBER)
-        self.text.tag_configure("ok", foreground=OK)
-        self.text.tag_configure("err", foreground=ERR)
-        self.text.tag_configure("dim", foreground=DIM)
+        for tag, colour in (("dir", DIM), ("req", AMBER), ("ok", OK),
+                            ("err", ERR), ("dim", DIM)):
+            self.text.tag_configure(tag, foreground=colour)
         self.text.configure(state="disabled")
         self._n = 0
         self._q = queue.Queue()
         self._drain()
-
-        self.status_var = tk.StringVar(value="connecting…")
-        ttk.Label(self.root, textvariable=self.status_var, style="Status.TLabel",
-                  anchor="w").pack(fill="x", side="bottom")
-
-    # -- log ----------------------------------------------------------
 
     def log(self, line):
         self._q.put(line)
@@ -274,21 +96,370 @@ class TVGui:
             while True:
                 line = self._q.get_nowait()
                 self._n += 1
-                self.count_var.set(f"{self._n} calls")
+                self.count.set(f"{self._n} calls")
                 self.text.configure(state="normal")
                 ts = time.strftime("%H:%M:%S")
-                tag = ("req" if line.startswith("→") else
-                       "ok" if line.startswith("← 2") else
-                       "err" if line.startswith("← 4") or line.startswith("← 5") else "dim")
+                if line.startswith("← 401"):
+                    tag = "dim"       # digest challenge retry — normal, not an error
+                elif line.startswith("← 2"):
+                    tag = "ok"
+                elif line.startswith("← 4") or line.startswith("← 5"):
+                    tag = "err"
+                elif line.startswith("→"):
+                    tag = "req"
+                else:
+                    tag = "dim"
                 self.text.insert("end", f"{ts}  ", "dim")
                 self.text.insert("end", line + "\n", tag)
                 self.text.see("end")
                 self.text.configure(state="disabled")
         except queue.Empty:
             pass
-        self.root.after(150, self._drain)
+        self.after(150, self._drain)
 
-    # -- plumbing ------------------------------------------------------
+
+class TVGui:
+    def __init__(self, tv: PhilipsTV):
+        self.tv = tv
+        self.transport = tv.transport
+        self.root = tk.Tk()
+        self.root.title("philips-tv-rea")
+        self.root.configure(bg=BG)
+        self.root.geometry("1240x1040")
+        self.root.minsize(1080, 880)
+        self._style()
+        self._build()
+        self.transport.log_fn = self.log
+        self.vol_sending = False
+        self._poll()
+
+    # ---- theme ----------------------------------------------------------
+
+    def _style(self):
+        s = ttk.Style()
+        s.theme_use("clam")
+        s.configure("TFrame", background=BG)
+        s.configure("Panel.TFrame", background=PANEL)
+        s.configure("TLabel", background=BG, foreground=FG, font=SANS)
+        s.configure("P.TLabel", background=PANEL, foreground=FG, font=SANS)
+        s.configure("Dim.TLabel", background=PANEL, foreground=DIM, font=MONO_SMALL)
+        s.configure("Amber.TLabel", background=PANEL, foreground=AMBER, font=SANS_BOLD)
+        s.configure("TButton", background=KEYCAP, foreground=BRIGHT, font=SANS_SMALL,
+                    borderwidth=0, focusthickness=1, focuscolor=AMBER,
+                    padding=(8, 6))
+        s.map("TButton",
+              background=[("pressed", AMBER_DIM), ("active", KEYCAP_HI)])
+        s.configure("Warn.TButton", background="#33241F", foreground=ERR, font=SANS_SMALL,
+                    borderwidth=0, padding=(8, 6))
+        s.map("Warn.TButton", background=[("active", "#46281f"), ("pressed", AMBER_DIM)])
+        s.configure("TCheckbutton", background=BG, foreground=FG, font=SANS)
+        s.map("TCheckbutton", background=[("active", BG)])
+        s.configure("Horizontal.TScale", background=BG, troughcolor=LOG_BG,
+                    bordercolor=BG, lightcolor=AMBER, darkcolor=AMBER)
+        s.configure("Status.TLabel", background=PANEL, foreground=DIM, font=MONO_SMALL)
+
+    # ---- layout ---------------------------------------------------------
+
+    def _build(self):
+        root = ttk.Frame(self.root)
+        root.pack(fill="both", expand=True)
+
+        # ============ column 1: identity ================================
+        left = tk.Frame(root, bg=PANEL, width=240)
+        left.grid(row=0, column=0, sticky="nsew")
+        left.pack_propagate(False)
+
+        tk.Label(left, text="philips-tv-rea", bg=PANEL, fg=AMBER,
+                 font=SANS_BOLD, anchor="w").pack(fill="x", padx=16, pady=(16, 0))
+        tk.Label(left, text="JointSpace v6", bg=PANEL, fg=DIM,
+                 font=MONO_SMALL, anchor="w").pack(fill="x", padx=16, pady=(0, 12))
+        tk.Frame(left, bg=EDGE, height=1).pack(fill="x")
+
+        self.info_vars = {}
+        for label in ("name", "model", "serialnumber", "softwareversion", "api_version"):
+            row = tk.Frame(left, bg=PANEL)
+            row.pack(fill="x", padx=16, pady=(6, 0))
+            tk.Label(row, text=label, bg=PANEL, fg=DIM, font=MONO_SMALL,
+                     width=12, anchor="w").pack(side="left")
+            var = tk.StringVar(value="…")
+            tk.Label(row, textvariable=var, bg=PANEL, fg=BRIGHT, font=MONO_SMALL,
+                     anchor="w").pack(side="left", fill="x", expand=True)
+            self.info_vars[label] = var
+
+        tk.Frame(left, bg=EDGE, height=1).pack(fill="x", pady=12)
+        tk.Label(left, text="Context", bg=PANEL, fg=DIM, font=MONO_SMALL,
+                 anchor="w").pack(fill="x", padx=16, pady=(0, 4))
+        self.ctx_var = tk.StringVar(value="…")
+        tk.Label(left, textvariable=self.ctx_var, bg=PANEL, fg=FG, font=MONO_SMALL,
+                 justify="left", anchor="nw", wraplength=200).pack(fill="x", padx=16)
+
+        tk.Frame(left, bg=EDGE, height=1).pack(fill="x", pady=12)
+        tk.Label(left, text="Channel", bg=PANEL, fg=DIM, font=MONO_SMALL,
+                 anchor="w").pack(fill="x", padx=16, pady=(0, 4))
+        self.chan_var = tk.StringVar(value="…")
+        tk.Label(left, textvariable=self.chan_var, bg=PANEL, fg=FG, font=MONO_SMALL,
+                 justify="left", anchor="nw", wraplength=200).pack(fill="x", padx=16)
+
+        self.amb_var = tk.StringVar(value="")
+
+        # bottom: connection + standby
+        bot = tk.Frame(left, bg=PANEL)
+        bot.pack(side="bottom", fill="x", pady=12)
+
+        hints = tk.Frame(bot, bg=PANEL)
+        hints.pack(fill="x", padx=16, pady=(10, 6))
+        for line in (
+            "←→↑↓  navigate",
+            "⏢  OK / confirm",
+            "0-9  channel digits",
+            "Esc / ⌫  back",
+            "h  home   m  mute",
+            "+ / −  volume",
+            "o  options   i  info",
+            "p  standby",
+        ):
+            tk.Label(hints, text=line, bg=PANEL, fg=DIM, font=MONO_SMALL,
+                     anchor="w").pack(fill="x")
+
+        btnrow = tk.Frame(bot, bg=PANEL)
+        btnrow.pack(fill="x", padx=16, pady=(8, 6))
+        btnrow.columnconfigure(0, weight=1)
+        btnrow.columnconfigure(1, weight=1)
+        ttk.Button(btnrow, text="Reconnect", command=self._on_reconnect).grid(
+            row=0, column=0, sticky="ew", padx=(0, 4))
+        ttk.Button(btnrow, text="Standby", style="Warn.TButton",
+                   command=self._on_standby).grid(row=0, column=1, sticky="ew", padx=(4, 0))
+
+
+        # ============ column 2: volume + remote (scrollable) =============
+        outer = tk.Frame(root, bg=BG)
+        outer.grid(row=0, column=1, sticky="nsew", padx=18, pady=14)
+        outer.rowconfigure(0, weight=1)
+        outer.columnconfigure(0, weight=1)
+
+        canvas = tk.Canvas(outer, bg=BG, highlightthickness=0, bd=0)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        vs = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        vs.grid(row=0, column=1, sticky="ns")
+        canvas.configure(yscrollcommand=vs.set)
+
+        mid = tk.Frame(canvas, bg=BG)
+        canvas.create_window((0, 0), window=mid, anchor="nw", tags="inner")
+
+        def _on_inner_configure(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            # show scrollbar only when content actually overflows
+            inner_h = mid.winfo_reqheight()
+            if inner_h <= canvas.winfo_height():
+                vs.grid_remove()
+            else:
+                vs.grid()
+        mid.bind("<Configure>", _on_inner_configure)
+
+        def _on_canvas_configure(event):
+            # keep the inner frame as wide as the canvas so children stretch
+            canvas.itemconfigure("inner", width=event.width)
+        canvas.bind("<Configure>", _on_canvas_configure)
+
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        # wheel scrolling only when the cursor is over the keypad canvas
+        # (bind on widgets, not bind_all, so the log pane scrolls independently)
+        for widget in (canvas, mid):
+            widget.bind("<MouseWheel>", _on_mousewheel)
+            widget.bind("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))
+            widget.bind("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))
+        def _bind_tree(w):
+            for child in w.winfo_children():
+                child.bind("<MouseWheel>", _on_mousewheel)
+                child.bind("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))
+                child.bind("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))
+                _bind_tree(child)
+        mid.bind("<Map>", lambda e: _bind_tree(mid))
+
+        # volume instrument: one row — number, slider, mute
+        vol_card = tk.Frame(mid, bg=PANEL)
+        vol_card.pack(fill="x", pady=(0, 12))
+        row = tk.Frame(vol_card, bg=PANEL)
+        row.pack(fill="x", padx=14, pady=12)
+        self.vol_display = tk.Label(row, text="--", bg=PANEL, fg=BRIGHT,
+                                    font=("DejaVuSans", 16, "bold"), width=3)
+        self.vol_display.pack(side="left")
+        self.vol_value = tk.IntVar(value=33)
+        self.vol_scale = ttk.Scale(row, from_=0, to=60, orient="horizontal",
+                                   variable=self.vol_value, command=self._on_slider)
+        self.vol_scale.pack(side="left", fill="x", expand=True, padx=(12, 12))
+        self.muted_var = tk.BooleanVar(value=False)
+        self.mute_btn = ttk.Button(row, text="Mute", width=6,
+                                   command=self._on_mute)
+        self.mute_btn.pack(side="right")
+        self._muted = False
+
+        # ---- numpad: 7 8 9 / 4 5 6 / 1 2 3 / ⌫ 0 · ----
+        num_card = tk.Frame(mid, bg=PANEL)
+        num_card.pack(fill="x", pady=(12, 0))
+        tk.Label(num_card, text="DIGITS", bg=PANEL, fg=DIM,
+                 font=MONO_SMALL, anchor="w").pack(fill="x", padx=12, pady=(6, 0))
+        num = tk.Frame(num_card, bg=PANEL)
+        num.pack(fill="x", padx=90, pady=(2, 8))
+        num_layout = [
+            ("7", "Digit7"), ("8", "Digit8"), ("9", "Digit9"),
+            ("4", "Digit4"), ("5", "Digit5"), ("6", "Digit6"),
+            ("1", "Digit1"), ("2", "Digit2"), ("3", "Digit3"),
+            ("⌫", "Back"), ("0", "Digit0"), ("·", "Dot"),
+        ]
+        for i, (label, api_key) in enumerate(num_layout):
+            tk.Button(num, text=label, bg=KEYCAP, fg=BRIGHT,
+                      activebackground=KEYCAP_HI, activeforeground=BRIGHT,
+                      relief="flat", bd=0, font=("DejaVuSans", 11),
+                      cursor="hand2", command=lambda a=api_key: self._send_key(a)
+                      ).grid(row=i // 3, column=i % 3, padx=2, pady=2, sticky="ew")
+        for c in range(3):
+            num.columnconfigure(c, weight=1, uniform="num")
+        for r in range(4):
+            num.rowconfigure(r, weight=1)
+
+        # ---- D-pad: cross layout with Confirm center ----
+        dpad_card = tk.Frame(mid, bg=PANEL)
+        dpad_card.pack(fill="x", pady=(12, 0))
+        tk.Label(dpad_card, text="NAVIGATE", bg=PANEL, fg=DIM,
+                 font=MONO_SMALL, anchor="w").pack(fill="x", padx=12, pady=(6, 0))
+        dpad = tk.Frame(dpad_card, bg=PANEL)
+        dpad.pack(fill="x", padx=90, pady=(2, 8))
+        dpad.columnconfigure(0, weight=1)
+        dpad.columnconfigure(1, weight=1)
+        dpad.columnconfigure(2, weight=1)
+
+        def dpad_btn(row, col, symbol, api_key):
+            tk.Button(dpad, text=symbol, bg=KEYCAP, fg=BRIGHT,
+                      activebackground=KEYCAP_HI, activeforeground=BRIGHT,
+                      relief="flat", bd=0, font=("DejaVuSans", 11),
+                      cursor="hand2", command=lambda a=api_key: self._send_key(a)
+                      ).grid(row=row, column=col, padx=2, pady=2, sticky="ew")
+        dpad_btn(0, 1, "▲", "CursorUp")
+        dpad_btn(1, 0, "◀", "CursorLeft")
+        dpad_btn(1, 1, "OK", "Confirm")
+        dpad_btn(1, 2, "▶", "CursorRight")
+        dpad_btn(2, 1, "▼", "CursorDown")
+        for c in range(3):
+            dpad.columnconfigure(c, weight=1, uniform="dpad")
+        for r in range(3):
+            dpad.rowconfigure(r, weight=1)
+
+        # remote panel: one continuous surface, groups separated by hairlines
+        remote = tk.Frame(mid, bg=PANEL)
+        remote.pack(fill="both", expand=True, pady=(14, 0))
+
+        first = True
+        for group, keys in KEY_GROUPS:
+            if not first:
+                tk.Frame(remote, bg=EDGE_SOFT, height=1).pack(fill="x")
+            first = False
+            tk.Label(remote, text=group.upper(), bg=PANEL, fg=DIM,
+                     font=MONO_SMALL, anchor="w").pack(fill="x",
+                     padx=(12, 0), pady=(6, 1))
+            grid = tk.Frame(remote, bg=PANEL)
+            grid.pack(fill="x", padx=10, pady=(0, 4))
+            cols = 4 if len(keys) >= 4 else len(keys)
+            rows = (len(keys) + cols - 1) // cols
+            for i, (label, api_key) in enumerate(keys):
+                colour = COLOUR_KEY_COLOURS.get(api_key)
+                if colour:
+                    btn = tk.Button(grid, text=label, bg=colour, fg=BG,
+                                    activebackground=colour, activeforeground=BG,
+                                    relief="flat", bd=0, font=("DejaVuSans", 11, "bold"),
+                                    cursor="hand2",
+                                    command=lambda a=api_key: self._send_key(a))
+                else:
+                    btn = ttk.Button(grid, text=label, style="TButton",
+                                     command=lambda a=api_key: self._send_key(a))
+                btn.grid(row=i // cols, column=i % cols, padx=3, pady=3, sticky="nsew")
+            for c in range(cols):
+                grid.columnconfigure(c, weight=1, uniform="keycap")
+            for r in range(rows):
+                grid.rowconfigure(r, weight=1)
+
+        # ============ column 3: activity log ============================
+        right = tk.Frame(root, bg=PANEL, width=420)
+        right.grid(row=0, column=2, sticky="nsew", padx=(1, 0))
+        right.pack_propagate(False)
+        self.console = ActivityLog(right)
+        self.console.pack(fill="both", expand=True)
+
+        # status bar
+        # consolidated status line: dot, connection state, last event
+        status = tk.Frame(self.root, bg=PANEL)
+        status.pack(fill="x", side="bottom")
+        self.conn_dot = tk.Canvas(status, width=8, height=8, bg=PANEL, highlightthickness=0)
+        self.conn_dot.pack(side="left", padx=(12, 5))
+        self._conn_dot_item = self.conn_dot.create_oval(1, 1, 7, 7, fill=DIM, outline="")
+        self.conn_var = tk.StringVar(value="connecting…")
+        tk.Label(status, textvariable=self.conn_var, bg=PANEL, fg=DIM,
+                 font=MONO_SMALL).pack(side="left")
+        self.status_var = tk.StringVar(value="")
+        ttk.Label(status, textvariable=self.status_var, style="Status.TLabel",
+                  anchor="w").pack(side="left", fill="x", expand=True, padx=12)
+        ttk.Label(status, textvariable=self.amb_var, style="Status.TLabel").pack(
+            side="right", padx=12)
+
+        self._bind_keyboard()
+
+        root.columnconfigure(1, weight=1)
+        root.columnconfigure(2, weight=1)
+        root.rowconfigure(0, weight=1)
+
+    # ---- keyboard ----------------------------------------------------
+
+    def _bind_keyboard(self):
+        """Map desktop keyboard to remote: arrows drive the TV cursor, the
+        number row and numpad send digits, Enter confirms, Esc/Backspace go
+        back. Volume: +/- ; Mute: m ; Home: h ; Standby: p."""
+        def k(event):
+            key = event.keysym
+            state = event.state & 0x000F  # ignore caps/num lock modifiers
+            if state & 0x1:  # shift held — let Shift+arrows etc through? no text inputs, still map
+                pass
+            simple = {
+                "Up": "CursorUp", "Down": "CursorDown",
+                "Left": "CursorLeft", "Right": "CursorRight",
+                "Return": "Confirm", "KP_Enter": "Confirm",
+                "BackSpace": "Back", "Escape": "Back",
+                "h": "Home", "H": "Home",
+                "m": "Mute", "M": "Mute",
+                "o": "Options", "O": "Options",
+                "i": "Info", "I": "Info",
+                "p": None,  # standby — handled specially below
+                "plus": "VolumeUp", "equal": "VolumeUp",
+                "minus": "VolumeDown", "underscore": "VolumeDown",
+                "KP_Add": "VolumeUp", "KP_Subtract": "VolumeDown",
+            }
+            digits = {
+                "0": "Digit0", "1": "Digit1", "2": "Digit2", "3": "Digit3",
+                "4": "Digit4", "5": "Digit5", "6": "Digit6", "7": "Digit7",
+                "8": "Digit8", "9": "Digit9",
+                "KP_0": "Digit0", "KP_1": "Digit1", "KP_2": "Digit2",
+                "KP_3": "Digit3", "KP_4": "Digit4", "KP_5": "Digit5",
+                "KP_6": "Digit6", "KP_7": "Digit7", "KP_8": "Digit8",
+                "KP_9": "Digit9",
+            }
+            if key in simple:
+                target = simple[key]
+                if target is None:
+                    self._on_standby()
+                    return "break"
+                self._send_key(target)
+                return "break"
+            if key in digits:
+                self._send_key(digits[key])
+                return "break"
+            return None
+
+        self.root.bind("<Key>", k)
+
+    # ---- plumbing --------------------------------------------------------
+
+    def log(self, line):
+        self.console.log(line)
 
     def _bg(self, fn, on_done, on_error=None):
         def runner():
@@ -301,22 +472,62 @@ class TVGui:
         threading.Thread(target=runner, daemon=True).start()
 
     def _poll(self):
-        self._bg(lambda: (self.tv.volume(), self.tv.context()), self._apply_state)
+        def fetch():
+            vol, ctx, ok = {}, {}, True
+            try:
+                vol = self.tv.volume()
+                ctx = self.tv.context()
+            except Exception:
+                ok = False
+            activities = {}
+            try:
+                r = self.tv.transport.get("/6/activities/tv")
+                if r.status == 200:
+                    activities = r.json() or {}
+            except Exception:
+                pass
+            ambilight = ""
+            try:
+                r = self.tv.transport.get("/6/ambilight/power")
+                if r.status == 200:
+                    ambilight = (r.json() or {}).get("power", "")
+            except Exception:
+                pass
+            return (vol, ctx, ok, activities, ambilight)
+        self._bg(fetch, self._apply_state)
         self.root.after(3000, self._poll)
 
     def _apply_state(self, result):
-        vol, ctx = result
+        vol, ctx, alive, activities, ambilight = result
+        if not alive or (not vol and not ctx):
+            self.conn_dot.itemconfig(self._conn_dot_item, fill=ERR)
+            self.conn_var.set("TV not responding — power-cycle at the wall")
+            return
+        self.conn_dot.itemconfig(self._conn_dot_item, fill=OK)
+        self.conn_var.set("connected")
+        # channel line under context
+        ch = (activities or {}).get("channel") or {}
+        ccl = (activities or {}).get("channelList") or {}
+        if ch and ccl:
+            name = ch.get("name", "")
+            num = ch.get("preset_number", "")
+            line = f"{num} {name}".strip() or "channel unknown"
+            self.chan_var.set(line)
+        elif ch == {} and ccl == {}:
+            self.chan_var.set("no channel (app/input)")
+        if ambilight:
+            self.amb_var.set(f"Ambilight: {ambilight}")
         if vol:
             if not self.vol_sending:
                 self.vol_value.set(vol.get("current", 0))
-            self.vol_display.config(text=f"{vol.get('current', 0)}")
-            self.muted_var.set(vol.get("muted", False))
+            self.vol_display.config(text=str(vol.get("current", 0)))
+            muted = vol.get("muted", False)
+            self._muted = muted
+            self.mute_btn.configure(text="Unmute" if muted else "Mute")
+            self.vol_scale.configure(to=vol.get("max", 60))
         if ctx:
             parts = [f"{k}: {v}" for k, v in ctx.items() if v not in ("NA", None, "")]
             self.ctx_var.set("\n".join(parts) or "no context reported")
-        self.conn_var.set("● connected")
-        self.conn_var_color = OK
-        self.status_var.set("connected — polling every 3 s")
 
     def _on_slider(self, value):
         if self.vol_sending:
@@ -329,14 +540,13 @@ class TVGui:
                  lambda err: setattr(self, "vol_sending", False))
 
     def _on_mute(self):
-        muted = self.muted_var.get()
+        self._muted = not self._muted
+        muted = self._muted
+        self.mute_btn.configure(text="Unmute" if muted else "Mute")
         self._bg(lambda: self.tv.set_muted(muted),
                  lambda ok: self.status_var.set(f"muted: {muted}" if ok else "mute failed"))
 
-    def _send_key(self, label):
-        # NOTE: arrows do nothing on the Titan home screen (web app, no focus
-        # model) — they work inside apps with their own focus lists.
-        key = LABEL_TO_KEY.get(label, label)
+    def _send_key(self, key):
         self._bg(lambda: self.tv.send_key(key),
                  lambda ok: self.status_var.set(f"{key}: {'sent' if ok else 'rejected'}"))
 
@@ -345,10 +555,12 @@ class TVGui:
             self._send_key("Standby")
 
     def _on_reconnect(self):
-        self.conn_var.set("● reconnecting…")
+        self.conn_dot.itemconfig(self._conn_dot_item, fill=DIM)
+        self.conn_var.set("reconnecting…")
         self._bg(lambda: self.tv.volume(),
-                 lambda v: self.status_var.set("reconnected"),
-                 lambda err: self.conn_var.set("● connection failed — power-cycle the TV"))
+                 lambda v: self.conn_var.set("connected"),
+                 lambda err: (self.conn_dot.itemconfig(self._conn_dot_item, fill=ERR),
+                              self.conn_var.set("failed — power-cycle the TV")))
 
     def run(self):
         self._bg(lambda: self.tv.system(decrypt=True),
