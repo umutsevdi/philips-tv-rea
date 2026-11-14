@@ -12,9 +12,11 @@
   let timer: ReturnType<typeof setInterval> | null = null;
   const id = 'hero';
   let paused = false;
+  let artFailed = false;
 
   $: item = items[current];
   $: backdrop = item?.images?.artwork_landscape ?? '';
+  $: if (item) artFailed = false; // fresh slide, retry its art
 
   function next() { if (!paused && items.length) current = (current + 1) % items.length; }
 
@@ -52,8 +54,8 @@
 >
   {#if item}
     {#key backdrop || item.id}
-      {#if backdrop}
-        <img class="backdrop" src={backdrop} alt="" loading="lazy" decoding="async" />
+      {#if backdrop && !artFailed}
+        <img class="backdrop" src={backdrop} alt="" loading="lazy" decoding="async" on:error={() => (artFailed = true)} />
       {:else}
         <div class="backdrop-fallback" style:background={gradFor(item.id)}></div>
       {/if}

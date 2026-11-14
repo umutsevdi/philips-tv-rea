@@ -8,6 +8,9 @@
   import type { Tile } from '../api/titan';
 
   export let utilities: Tile[] = [];
+  /* Registration namespace: both views can host a TopBar without their
+     elements clobbering each other in the spatial registry. */
+  export let idPrefix = '';
 
   let online = navigator.onLine;
   const setOnline = () => (online = navigator.onLine);
@@ -29,8 +32,8 @@
 
   // Top-bar buttons participate in spatial navigation as row -1.
   const utilAction: Action<HTMLElement, { tile: Tile; index: number }> = (el, params): ActionReturn<{ tile: Tile; index: number }> => {
-    register({ id: 'util:' + params.tile.id, el, row: -1, col: params.index });
-    return { destroy: () => unregister('util:' + params.tile.id) };
+    register({ id: idPrefix + 'util:' + params.tile.id, el, row: -1, col: params.index });
+    return { destroy: () => unregister(idPrefix + 'util:' + params.tile.id) };
   };
 </script>
 
@@ -55,7 +58,7 @@
       {@const Icon = iconMap[tile.icon ?? ''] ?? Settings}
       <button
         class="focusable util"
-        id={'util:' + tile.id}
+        id={idPrefix + 'util:' + tile.id}
         use:utilAction={{ tile, index: i }}
         tabindex="-1"
         aria-label={tile.name}

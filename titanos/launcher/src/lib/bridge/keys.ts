@@ -33,6 +33,23 @@ export function actionFor(e: KeyboardEvent): Action | null {
   return CODEMAP[e.keyCode] ?? KEYMAP[e.key] ?? null;
 }
 
+/* Dedicated app keys on the Titan remote (Netflix / Prime Video / YouTube /
+   Disney+ …). The stock launcher turns them into launch intents; on the
+   replacement page they can only arrive as key events, and their codes
+   aren't in the captured bundles. Mapped by key name where the browser
+   reports one; every unknown key is logged with its keyCode so the
+   on-device probe can fill this table (09/U-probe). */
+const HOTKEYS: Record<string, string> = {
+  Netflix: 'netflix',
+  PrimeVideo: 'prime',
+  YouTube: 'youtube',
+  Disney: 'disney',
+};
+
+export function hotkeyFor(e: KeyboardEvent): string | null {
+  return HOTKEYS[e.key] ?? null;
+}
+
 /* Long-press detection, mirroring the stock launcher's NCe helper:
    fires once after HOLD_MS, resets on keyup. */
 export class LongPress {

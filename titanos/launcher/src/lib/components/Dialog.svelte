@@ -1,19 +1,28 @@
+<script lang="ts" context="module">
+  export interface DialogOption {
+    label: string;
+    danger?: boolean;
+    run: () => void;
+  }
+</script>
+
 <script lang="ts">
-  /* Glass exit-confirm dialog (skill §12): focus-trapped via the spatial
-     engine's modal scope, focus restored to the trigger on close. Enter
-     activates the engine-focused button; back closes without exiting. */
-  import { register, unregister, setModal, focusWithin } from '../nav/spatial';
+  /* Glass dialog (skill §12): focus-trapped via the spatial engine's scope,
+     focus restored to the trigger on close by the caller. Enter activates
+     the engine-focused option; back closes via the caller's handler. */
+  import { register, unregister, setScope, focusWithin } from '../nav/spatial';
 
   export let open = false;
-  export let onconfirm: () => void = () => {};
-  export let oncancel: () => void = () => {};
+  export let title = '';
+  export let body = '';
+  export let options: DialogOption[] = [];
 
   /* Action-based activation: runs exactly when the dialog mounts, so the
-     modal scope and initial focus (on "Stay") are deterministic. */
+     scope and initial focus (first option — the safe default) are set. */
   const activate = (node: HTMLElement) => {
-    setModal(node);
+    setScope(node);
     focusWithin(node);
-    return { destroy: () => setModal(null) };
+    return { destroy: () => setScope(null) };
   };
 
   const reg = (node: HTMLButtonElement, col: number) => {
@@ -25,11 +34,16 @@
 {#if open}
   <div class="overlay" aria-hidden="true"></div>
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-h" use:activate>
-    <h2 id="dlg-h">Exit launcher?</h2>
-    <p>Closing returns the TV to its native home screen.</p>
+    <h2 id="dlg-h">{title}</h2>
+    {#if body}
+      <p>{body}</p>
+    {/if}
     <div class="actions">
-      <button class="focusable stay" use:reg={0} on:click={oncancel}>Stay</button>
-      <button class="focusable exit" use:reg={1} on:click={onconfirm}>Exit</button>
+      {#each options as opt, i}
+        <button class="focusable opt" class:danger={opt.danger} use:reg={i} on:click={opt.run}>
+          {opt.label}
+        </button>
+      {/each}
     </div>
   </div>
 {/if}
@@ -75,20 +89,22 @@
   }
   .actions {
     display: flex;
+    flex-wrap: wrap;          /* long labels (Remove from home) wrap, never overflow */
     justify-content: flex-end;
   }
   .actions button + button { margin-left: 12px; }
   .actions button {
-    min-width: 140px;
+    min-width: 120px;
     height: 44px;
+    padding: 0 20px;          /* the base reset is 0; labels need side room */
     border-radius: var(--radius);
     font-size: var(--fs-body);
     font-weight: 600;
   }
-  .stay { background: var(--glass); }
-  .stay:global(.focused) { background: var(--glass-2); }
-  .exit { background: var(--accent-soft); }
-  .exit:global(.focused) { background: var(--accent-soft); color: var(--accent); }
+  .opt { background: var(--glass); }
+  .opt.danger { background: var(--accent-soft); }
+  .opt:global(.focused) { background: var(--glass-2); }
+  .opt.danger:global(.focused) { background: var(--accent-soft); color: var(--accent); }
 
   @keyframes fade {
     from { opacity: 0; }

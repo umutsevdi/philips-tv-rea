@@ -8,6 +8,7 @@
   export let item: ContentItem;
   export let row = 1;
   let el: HTMLElement;
+  let artFailed = false;
   const id = `card:${item.id}`;
 
   $: artwork = item.images?.artwork_landscape ?? item.images?.icon_landscape ?? '';
@@ -28,8 +29,8 @@
 </script>
 
 <button bind:this={el} class="focusable card" id={id} tabindex="-1" on:click={open}>
-  {#if artwork}
-    <img src={artwork} alt="" loading="lazy" decoding="async" />
+  {#if artwork && !artFailed}
+    <img src={artwork} alt="" loading="lazy" decoding="async" on:error={() => (artFailed = true)} />
   {:else}
     <div class="noart" style:background={posterGrad(item.id)}>{item.title?.[0] ?? '#'}</div>
   {/if}

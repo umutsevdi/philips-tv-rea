@@ -2,13 +2,19 @@
   import { launch } from '../launch/dispatch';
   import { register, unregister } from '../nav/spatial';
   import { onMount } from 'svelte';
-  import { Settings, RadioReceiver, Calendar, Folder, Globe, List, Radio, Tv, Circle } from '@lucide/svelte';
+  import { Settings, RadioReceiver, Calendar, Folder, Globe, List, Radio, Tv, Pin, Circle } from '@lucide/svelte';
   import type { Tile } from '../api/titan';
 
   export let tile: Tile;
   export let row = 0;
+  /* Catalog tiles open an options dialog instead of launching directly. */
+  export let onopen: (() => void) | null = null;
+  export let pinned = false;
+  /* Registration namespace: a pinned catalog app renders in both views, so
+     each view prefixes its ids ('apps:') to keep the spatial registry clean. */
+  export let scope = '';
   let el: HTMLElement;
-  const id = `tile:${tile.id}`;
+  const id = `${scope}tile:${tile.id}`;
 
   const lucideMap: Record<string, any> = { Settings, RadioReceiver, Calendar, Folder, Globe, List, Radio, Tv };
 
@@ -29,7 +35,7 @@
     }
   }
 
-  function open() { launch(tile.launch); }
+  function open() { if (onopen) onopen(); else launch(tile.launch); }
   onMount(() => {
     register({ id, el, row, col: -1 });
     return () => unregister(id);
@@ -37,6 +43,11 @@
 </script>
 
 <button bind:this={el} class="focusable app-tile" id={id} tabindex="-1" aria-label={tile.name} on:click={open}>
+  {#if pinned}
+    <span class="pin-badge" aria-hidden="true">
+      <Pin size={12} strokeWidth={2.5} />
+    </span>
+  {/if}
   {#if kind === 'icon' && icon}
     {@const Icon = icon}
     <Icon size={40} strokeWidth={1.5} color="var(--dim)" />
@@ -67,6 +78,13 @@
   .app-tile:global(.focused) {
     transform: scale(var(--scale-icon));
     background: var(--glass-2);
+  }
+  .pin-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    color: var(--accent);
   }
   .brand {
     width: 52px;

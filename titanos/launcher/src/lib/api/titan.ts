@@ -80,6 +80,28 @@ export async function fetchHome(): Promise<PageList[] | null> {
     .slice(0, 3);
 }
 
+/** The device's app list (docs/03 "Where the app list comes from"):
+    /me/apps, one deeplinking per item. Response shape is inferred from the
+    bundles (array or {apps:[...]}) — verify on-device (09/U4, U11). */
+export async function fetchAppCatalog(): Promise<Tile[]> {
+  const tk = token();
+  if (!tk) return [];
+  const res = await get<unknown>('/me/apps', tk);
+  if (!res) return [];
+  const items: ContentItem[] = Array.isArray(res)
+    ? (res as ContentItem[])
+    : Array.isArray((res as { apps?: ContentItem[] }).apps)
+      ? (res as { apps: ContentItem[] }).apps
+      : [];
+  return items
+    .filter((it) => it.deeplinkings?.length)
+    .map((it) => ({
+      id: it.id,
+      name: it.title ?? 'App',
+      launch: specFromDeeplink(it.deeplinkings![0]),
+    }));
+}
+
 /** Convert a backend deeplinking to a launch spec (docs/03 dispatch order). */
 export function specFromDeeplink(d: DeepLinking): LaunchSpec {
   const app = d.app;
