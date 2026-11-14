@@ -32,15 +32,32 @@ from philips_tv import gui
 
 def get_tv(require_creds: bool = True) -> PhilipsTV:
     cfg = load()
-    if not cfg:
-        print("No credentials found. Run: tvctl pair", file=sys.stderr)
-        sys.exit(1)
+    if not cfg and require_creds:
+        print("No credentials found. Starting pairing...", file=sys.stderr)
+        import argparse as _ap
+        cmd_pair(_ap.Namespace(host=None))
+        cfg = load()
     creds = Credentials(cfg["user"], cfg["password"])
     return PhilipsTV(cfg["host"], creds)
 
 
 def cmd_pair(args):
-    host = args.host or input("TV IP address: ").strip()
+    if args.host:
+        host = args.host
+    else:
+        print("Searching the local network for Philips TVs...")
+        from philips_tv.discovery import discover
+        found = discover(timeout=4)
+        if not found:
+            host = input("No TV found automatically. Enter TV IP address: ").strip()
+        elif len(found) == 1:
+            host = found[0].host
+            print(f"Found TV: {found[0].model or 'unknown'} at {host}")
+        else:
+            for i, t in enumerate(found):
+                print(f"  [{i}] {t.model or 'unknown'}  {t.host}")
+            idx = input("Multiple TVs found - pick a number: ").strip()
+            host = found[int(idx)].host
     transport = JointSpaceTransport(host)
     creds = pair(transport, device_name="philips-tv-rea")
     path = save(host, creds)

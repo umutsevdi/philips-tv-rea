@@ -13,6 +13,10 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from .tv import PhilipsTV, KNOWN_KEYS
+from .transport import JointSpaceTransport
+from .discovery import discover
+from .pairing import pair as pair_flow
+from . import config
 
 BG = "#16191D"
 PANEL = "#1E2227"
@@ -57,10 +61,84 @@ class TVGui:
         self.root.geometry("1240x780")
         self.root.minsize(1024, 640)
         self._style()
+        cfg = config.load()
+        if not cfg:
+            if not self._first_run_setup():
+                raise SystemExit(1)
         self._build()
         self.transport.log_fn = self.log
         self.vol_sending = False
         self._poll()
+
+    def _first_run_setup(self):
+        """Discover TVs on the LAN, pair with the chosen one."""
+        dlg = tk.Toplevel(self.root)
+        dlg.title("Pair a TV")
+        dlg.configure(bg=BG)
+        dlg.geometry("460x260")
+        dlg.grab_set()
+        tk.Label(dlg, text="No paired TV found.", bg=BG, fg=FG,
+                 font=SANS_BOLD).pack(anchor="w", padx=16, pady=(16, 4))
+        tk.Label(dlg, text="Searching the local network...", bg=BG, fg=DIM,
+                 font=MONO_SMALL).pack(anchor="w", padx=16)
+        result = {"tv": None}
+
+        listbox = None
+
+        def do_pair():
+            sel = result["tv"]
+            if not sel:
+                return
+            pin_win = tk.Toplevel(dlg)
+            pin_win.title("PIN")
+            pin_win.configure(bg=BG)
+            tk.Label(pin_win, text="A 4-digit PIN should now show on the TV.", bg=BG,
+                     fg=FG, font=SANS).pack(padx=16, pady=(16, 4))
+            pin_entry = tk.Entry(pin_win, font=MONO, width=8, show="",
+                                 insertbackground=FG, bg="#101316", fg=FG,
+                                 relief="flat")
+            pin_entry.pack(padx=16, pady=4)
+            pin_entry.focus_set()
+
+            def confirm():
+                pin = pin_entry.get().strip()
+                pin_win.destroy()
+                transport = JointSpaceTransport(sel.host)
+                try:
+                    creds = pair_flow(transport, device_name="philips-tv-rea",
+                                      pin_callback=lambda: pin)
+                    config.save(sel.host, creds)
+                    dlg.destroy()
+                    messagebox.showinfo("Paired", f"Paired with {sel.model or sel.host}")
+                except Exception as exc:  # noqa: BLE001
+                    messagebox.showerror("Pairing failed", str(exc))
+
+            ttk.Button(pin_win, text="Pair", command=confirm).pack(pady=8)
+
+        def on_select(event):
+            sel = listbox.curselection()
+            if sel:
+                result["tv"] = found_tvs[sel[0]]
+                do_pair()
+
+        def run_discovery():
+            found = discover(timeout=4)
+            if not found:
+                return
+            found_tvs[:] = found
+            listbox.delete(0, tk.END)
+            for t in found:
+                listbox.insert(tk.END, f"{t.model or 'unknown TV'}  ({t.host})")
+
+        found_tvs = []
+        listbox = tk.Listbox(dlg, bg="#101316", fg=FG, font=MONO_SMALL,
+                             relief="flat", selectbackground="#333A42", height=6)
+        listbox.pack(fill="both", expand=True, padx=16, pady=8)
+        listbox.bind("<Double-1>", on_select)
+        ttk.Button(dlg, text="Search again", command=run_discovery).pack(pady=(0, 12))
+        threading.Thread(target=lambda: dlg.after(0, run_discovery), daemon=True).start()
+        self.root.wait_window(dlg)
+        return config.load() is not None
 
     def _style(self):
         s = ttk.Style()
