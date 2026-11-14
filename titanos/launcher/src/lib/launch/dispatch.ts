@@ -10,10 +10,10 @@ import type { LaunchSpec } from '../api/titan';
 export function launch(spec: LaunchSpec): void {
   switch (spec.kind) {
     case 'broadcast':
-      // Probe-fallback chain (U1 pending): dedicated bridge first, then
-      // native screens, then the legacy app manager. Real chain decided
-      // by on-device probe; here we try the plausible bridge names.
-      tuneLinearChannel(1);
+      // Probe-fallback chain (README, docs/09 U1): the firmware's linear
+      // channel bridge first; when the dialect is absent, open the native
+      // channel list screen so broadcast is always reachable.
+      if (!tuneLinearChannel(1)) loadLocalUI('channels');
       break;
     case 'local-ui':
       loadLocalUI(spec.uiId);

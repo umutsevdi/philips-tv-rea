@@ -17,7 +17,6 @@
   $: backdrop = item?.images?.artwork_landscape ?? '';
 
   function next() { if (!paused && items.length) current = (current + 1) % items.length; }
-  function go(i: number) { current = i; paused = true; }
 
   onMount(() => {
     register({ id, el, row: 0, col: -1 });
@@ -45,17 +44,20 @@
   id={id}
   tabindex="-1"
   role="button"
+  aria-label={item ? item.title : 'Featured'}
   on:click={open}
   on:keydown={(e) => e.key === 'Enter' && open()}
   on:mouseenter={() => (paused = true)}
   on:mouseleave={() => (paused = false)}
 >
   {#if item}
-    {#if backdrop}
-      <img class="backdrop" src={backdrop} alt="" />
-    {:else}
-      <div class="backdrop-fallback" style:background={gradFor(item.id)}></div>
-    {/if}
+    {#key backdrop || item.id}
+      {#if backdrop}
+        <img class="backdrop" src={backdrop} alt="" loading="lazy" decoding="async" />
+      {:else}
+        <div class="backdrop-fallback" style:background={gradFor(item.id)}></div>
+      {/if}
+    {/key}
     <div class="scrim"></div>
     <div class="content">
       <div class="brand-row">
@@ -67,17 +69,15 @@
       {#if item.synopsis}
         <p class="synopsis">{item.synopsis}</p>
       {/if}
-      <div class="actions">
-        <button class="play" on:click|stopPropagation={open} tabindex="-1">
-          <Play size={18} strokeWidth={2} />
-          Play
-        </button>
+      <!-- decorative affordance; the hero itself is the activation target -->
+      <div class="play" aria-hidden="true">
+        <Play size={18} strokeWidth={2} />
+        Play
       </div>
     </div>
     <div class="dots">
       {#each items as _, i}
-        <button class="dot" class:active={i === current} on:click|stopPropagation={() => go(i)} tabindex="-1"
-          aria-label={'slide ' + (i + 1)}></button>
+        <span class="dot" class:active={i === current}></span>
       {/each}
     </div>
   {/if}
@@ -92,58 +92,78 @@
     overflow: hidden;
     background: var(--surface);
     display: block;
+    text-align: left;
   }
-  .hero:focus { border-color: var(--accent); transform: none; }
-  .hero :global(.backdrop), .backdrop {
+  .hero:global(.focused) {
+    background: var(--glass-2);
+  }
+  .backdrop {
     position: absolute;
-    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
+    animation: fade var(--dur-max) var(--ease);
   }
   .backdrop-fallback {
     position: absolute;
-    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    animation: fade var(--dur-max) var(--ease);
   }
   .scrim {
     position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, rgba(16, 20, 28, 0.92) 0%, rgba(16, 20, 28, 0.55) 45%, rgba(16, 20, 28, 0.15) 100%);
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    background: linear-gradient(90deg, rgba(11, 14, 20, 0.88) 0%, rgba(11, 14, 20, 0.5) 45%, rgba(11, 14, 20, 0.12) 100%);
   }
   .content {
     position: absolute;
-    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
     padding: 32px 36px;
-    max-width: 46%;
+    max-width: 52%;
   }
   .brand-row {
     display: flex;
-    gap: 8px;
     margin-bottom: 10px;
   }
+  .source + .source { margin-left: 8px; }
   .source {
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--bg);
-    background: var(--live);
-    border-radius: 4px;
-    padding: 2px 8px;
+    font-size: var(--fs-caption);
+    font-weight: 500;
+    color: var(--text);
+    background: var(--glass-2);
+    border-radius: 999px;
+    padding: 3px 10px;
   }
   .title {
     font-family: var(--font-display);
-    font-size: 38px;
+    font-size: var(--fs-display);
     font-weight: 700;
-    letter-spacing: -0.02em;
-    line-height: 1.1;
+    letter-spacing: -0.01em;
+    line-height: var(--lh-tight);
     margin: 0 0 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .synopsis {
     color: var(--dim);
-    font-size: 14px;
-    line-height: 1.45;
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
     margin: 0 0 16px;
     display: -webkit-box;
     line-clamp: 2;
@@ -151,33 +171,41 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
-  .actions { display: flex; }
   .play {
     display: flex;
     align-items: center;
-    gap: 8px;
+    align-self: flex-start;
     background: var(--text);
     color: var(--bg);
     font-weight: 600;
-    font-size: 14px;
-    border-radius: 8px;
-    padding: 9px 18px;
-    transition: transform var(--dur) var(--ease);
+    font-size: var(--fs-label);
+    border-radius: 999px;
+    padding: 8px 18px;
   }
-  .play:hover { transform: scale(1.04); }
+  /* icon/text spacing without flex gap (unverified on this build) */
+  .play :global(svg) { margin-right: 8px; }
+  /* second focus cue (with the amber ring): the affordance pill lights up */
+  .hero:global(.focused) .play {
+    background: var(--accent);
+    color: var(--bg);
+  }
   .dots {
     position: absolute;
     right: 28px;
     bottom: 24px;
     display: flex;
-    gap: 8px;
   }
+  .dot + .dot { margin-left: 8px; }
   .dot {
     width: 8px;
     height: 8px;
     border-radius: 4px;
     background: rgba(232, 237, 242, 0.3);
-    transition: background var(--dur) var(--ease), width var(--dur) var(--ease);
   }
-  .dot.active { background: var(--text); width: 20px; }
+  .dot.active { width: 20px; background: var(--text); }
+
+  @keyframes fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
 </style>

@@ -24,7 +24,7 @@
   });
 </script>
 
-<button bind:this={el} class="focusable ch-card" id={id} tabindex="-1" on:click={open}>
+<button bind:this={el} class="focusable ch-card" id={id} tabindex="-1" aria-label={`${channel.number} ${channel.name}`} on:click={open}>
   <div class="art" style:background={posterGrad(String(channel.id))}>
     <span class="ch-num">{channel.number}</span>
     <span class="live-badge">Live</span>
@@ -39,50 +39,56 @@
 
 <style>
   .ch-card {
-    width: 200px;
+    width: var(--span-3);
     border-radius: var(--radius);
     overflow: hidden;
-    background: var(--surface);
     text-align: left;
     flex-shrink: 0;
   }
+  .ch-card:global(.focused) { background: var(--glass-2); }
   .art {
     width: 100%;
-    aspect-ratio: 16 / 9;
+    height: 152px; /* 16:9 of span-3; fallback for builds without aspect-ratio */
     position: relative;
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    padding: 8px;
+    padding: 8px 10px;
+  }
+  @supports (aspect-ratio: 16 / 9) {
+    .art { height: auto; aspect-ratio: 16 / 9; }
   }
   .ch-num {
     font-family: var(--font-display);
-    font-size: 18px;
+    font-size: var(--fs-headline);
     font-weight: 700;
-    color: rgba(232, 237, 242, 0.85);
+    color: var(--accent);
     font-variant-numeric: tabular-nums;
+    line-height: var(--lh-tight);
   }
   .live-badge {
-    font-size: 10px;
-    font-weight: 700;
+    font-size: var(--fs-caption);
+    font-weight: 500;
     letter-spacing: 0.06em;
-    color: #fff;
-    background: #d23b3b;
-    border-radius: 4px;
-    padding: 2px 6px;
+    color: var(--live);
+    background: var(--live-soft);
+    border: 1px solid var(--live-border);
+    border-radius: 999px;
+    padding: 1px 8px;
   }
   .meta {
-    padding: 8px 10px 10px;
+    padding: 8px 12px 12px;
   }
   .name {
-    font-size: 13px;
+    font-size: var(--fs-label);
+    font-weight: 500;
     color: var(--text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .now {
-    font-size: 11px;
+    font-size: var(--fs-caption);
     color: var(--dim);
     margin-top: 2px;
     overflow: hidden;

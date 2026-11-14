@@ -1,24 +1,69 @@
-/* Launcher design tokens — 10-foot UI, TV OSD heritage.
-   Palette: deep blue-slate base; one amber accent spent on focus;
-   cyan reserved for the broadcast tile's live edge. */
+/* Launcher design tokens + shared primitives — 10-foot UI, TV OSD heritage.
+   Design space: 1280×720 CSS viewport, 5% safe area (64px sides, 36px top/bottom).
+   Palette: deep blue-slate base; one amber accent spent on focus; cyan reserved
+   for the broadcast/live state.
+
+   Glass is FAUX: layered translucency plus a 1px top sheen via border-top-color.
+   No backdrop-filter anywhere — the feature is unverified on this build (docs/09)
+   and blur is forbidden on moving/focused elements (skill §3/§5). */
 :root {
+  /* canvas */
+  --vw: 1280px;
+  --vh: 720px;
+  --safe-x: 64px;
+  --safe-y: 36px;
+  --gutter: 24px;
+  --row-gap: 32px;
+  /* 12-column grid: col 74px + gutter 24px. Components snap to spans. */
+  --col: 74px;
+  --span-2: 172px;   /* app tiles */
+  --span-3: 270px;   /* content cards, channel cards */
+
+  /* surfaces */
   --bg: #10141c;
   --surface: #1a2029;
   --surface-2: #212a35;
+  --glass: rgba(26, 32, 41, 0.55);        /* resting panel */
+  --glass-2: rgba(46, 57, 71, 0.72);      /* lifted panel (focused/active) */
+  --glass-border: rgba(232, 237, 242, 0.08);
+  --glass-sheen: rgba(255, 255, 255, 0.1); /* top-edge highlight */
+  --scrim: rgba(11, 14, 20, 0.55);
+
+  /* text */
   --text: #e8edf2;
   --dim: #8a94a6;
   --faint: #5a6472;
-  --accent: #f2a33c;        /* OSD amber — focus only */
+
+  /* accent — amber is focus only, cyan is broadcast/live only */
+  --accent: #f2a33c;
   --accent-soft: rgba(242, 163, 60, 0.16);
-  --live: #53d2e1;          /* broadcast tile only */
+  --live: #53d2e1;
   --live-soft: rgba(83, 210, 225, 0.14);
-  --radius: 10px;
-  --radius-lg: 14px;
-  --dur: 140ms;
-  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
-  --scale-focus: 1.06;
+  --live-border: rgba(83, 210, 225, 0.4);
+
+  /* type */
+  --fs-caption: 12px;
+  --fs-label: 14px;
+  --fs-body: 16px;
+  --fs-title: 20px;
+  --fs-headline: 26px;
+  --fs-display: 36px;
+  --lh-tight: 1.2;
+  --lh-body: 1.4;
   --font-display: 'Bricolage Grotesque', 'Segoe UI', system-ui, sans-serif;
   --font-body: 'Segoe UI', system-ui, -apple-system, sans-serif;
+
+  /* shape & motion */
+  --radius: 10px;
+  --radius-tile: 12px;
+  --radius-lg: 14px;
+  --ring: 2px;
+  --dur-in: 120ms;
+  --dur-out: 160ms;
+  --dur-max: 200ms;
+  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --scale-icon: 1.08;  /* icon-only ≤ 64px */
+  --scale-card: 1.06;  /* cards/tiles */
 }
 
 * { box-sizing: border-box; }
@@ -32,8 +77,8 @@ html, body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-body);
-  font-size: 16px;
-  line-height: 1.4;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 
 #app { width: 100%; height: 100%; }
@@ -47,29 +92,78 @@ button {
   cursor: default;
 }
 
-/* Focus is the single accent moment: amber ring + scale. No shadows, no blur. */
-.focusable {
-  outline: none;
-  border: 2px solid transparent;
-  transition:
-    transform var(--dur) var(--ease),
-    border-color var(--dur) var(--ease),
-    background-color var(--dur) var(--ease);
-  will-change: transform;
-}
-.focusable:focus {
-  transform: scale(var(--scale-focus));
-  border-color: var(--accent);
-  z-index: 5;
-}
-
 img { display: block; }
 
-@media (prefers-reduced-motion: reduce) {
-  * { transition-duration: 1ms !important; animation-duration: 1ms !important; }
-  :root { --scale-focus: 1; }
+/* ---------------------------------------------------------------------------
+   Focus system. The spatial engine drives state via classes (.focused /
+   .pressed) synchronously; native :focus is deliberately unstyled so engine
+   focus and visual focus can never disagree. Every focusable carries the ring
+   in its own border (2px, transparent-glass when idle) so focus never clips,
+   and the glass edge comes free: idle top border is the sheen highlight.
+--------------------------------------------------------------------------- */
+.focusable {
+  position: relative;
+  outline: none;
+  background: var(--glass);
+  border: var(--ring) solid var(--glass-border);
+  border-top-color: var(--glass-sheen);
+  border-radius: var(--radius);
+  /* transform + border-color only on the keypress path; background changes
+     are instant (no background-color transition on a moving element). */
+  transition:
+    transform var(--dur-in) var(--ease),
+    border-color var(--dur-in) var(--ease);
+}
+.focusable.focused {
+  transform: scale(var(--scale-card));
+  border-color: var(--accent);
+  z-index: 5;
+  will-change: transform;
+}
+.focusable:not(.focused) { will-change: auto; }
+/* Pressed overrides the scale *variables* so it wins over per-component
+   focused transforms without specificity games (skill §5: 1.02 on keydown). */
+.focusable.pressed {
+  --scale-icon: 1.02;
+  --scale-card: 1.02;
 }
 
+/* ---------------------------------------------------------------------------
+   Shelf depth: opacity layering only. Shelves not holding focus recede by
+   dimming — never scale, which would shift every left edge and gutter and
+   break grid alignment between shelves. Geometry must not depend on focus.
+   The spatial engine marks the shelf containing focus; when focus is outside
+   every shelf (top bar) nothing recedes.
+--------------------------------------------------------------------------- */
+.shelf {
+  transition: opacity var(--dur-out) var(--ease);
+}
+.shelf.dimmed {
+  opacity: 0.88;
+}
 
-/* spatial engine marks focus with a class as well as native focus */
-.util.focused { color: var(--text); }
+/* ---------------------------------------------------------------------------
+   Spacing without flex `gap`: the property is unverified on this Blink build
+   (skill "unverified features", docs/09), so all inter-item spacing is
+   margin-based. These selectors cover every track/quick-row/shelf stack
+   wherever it appears (Row, Skeleton, App) — geometry never depends on `gap`.
+--------------------------------------------------------------------------- */
+.rows > * + *,
+.skeleton > * + * { margin-top: var(--row-gap); }
+.track > * + *,
+.quick-row > * + * { margin-left: var(--gutter); }
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-in: 1ms;
+    --dur-out: 1ms;
+    --dur-max: 1ms;
+    --scale-icon: 1;
+    --scale-card: 1;
+  }
+  .shelf { transition-duration: 1ms; }
+  .focusable.pressed {
+    --scale-icon: 1;
+    --scale-card: 1;
+  }
+}

@@ -1,5 +1,6 @@
 {
   "tiles": [
+    { "id": "tv", "name": "Live TV", "brand": "ui", "icon": "Tv", "launch": { "kind": "broadcast" } },
     { "id": "netflix", "name": "Netflix", "brand": "netflix", "launch": { "kind": "netflix" } },
     { "id": "prime", "name": "Prime Video", "brand": "prime", "color": "#00A8E1", "launch": { "kind": "prime" } },
     { "id": "youtube", "name": "YouTube", "brand": "youtube",

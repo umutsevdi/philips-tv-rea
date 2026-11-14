@@ -95,15 +95,19 @@ export function launchFVP(url: string, isTemplate = false): void {
   }
 }
 
-export function tuneLinearChannel(channelNumber: number, sid?: string): void {
+/** Tune by the firmware's linear-channel bridge. Returns true when a real
+    bridge ran; false means the dialect is absent (desktop mock, or U1
+    origin-gating) and the caller should fall back. */
+export function tuneLinearChannel(channelNumber: number, sid?: string): boolean {
   // No dedicated bridge observed; the stock launcher uses launchLinearChannel
   // (docs/03 tier 1). Try the plausible names in order.
   const a = w as unknown as Record<string, ((...args: unknown[]) => void) | undefined>;
   const candidates = ['launchLinearChannel', 'LaunchLinearChannel'];
   for (const name of candidates) {
-    if (typeof a[name] === 'function') { a[name]!(channelNumber, 'launcher', sid); return; }
+    if (typeof a[name] === 'function') { a[name]!(channelNumber, 'launcher', sid); return true; }
   }
   console.info(`[mock] tuneLinearChannel(${channelNumber})`);
+  return false;
 }
 
 // -- device info ------------------------------------------------------------

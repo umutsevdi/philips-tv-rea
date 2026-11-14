@@ -6,11 +6,14 @@
   import AppTile from './lib/components/AppTile.svelte';
   import Card from './lib/components/Card.svelte';
   import ChannelCard from './lib/components/ChannelCard.svelte';
+  import Ambient from './lib/components/Ambient.svelte';
+  import Skeleton from './lib/components/Skeleton.svelte';
+  import Dialog from './lib/components/Dialog.svelte';
   import { actionFor, LongPress } from './lib/bridge/keys';
+  import type { Action } from './lib/bridge/keys';
   import * as nav from './lib/nav/spatial';
   import { notifyVersion, hasFirmware } from './lib/bridge/device';
-  import { fetchHome } from './lib/api/titan';
-  import { specFromDeeplink } from './lib/api/titan';
+  import { fetchHome, specFromDeeplink } from './lib/api/titan';
   import type { PageList, Tile, ContentItem } from './lib/api/titan';
   import { DEMO_HERO, DEMO_ROWS } from './lib/api/demo';
   import { channels as fetchChannels } from './lib/api/tv';
@@ -23,6 +26,9 @@
   let channelList: TvChannel[] = [];
   let loaded = false;
   let demoNow: Record<string, string> = {};
+  let dialogOpen = false;
+  let dialogReturn: string | null = null;
+  let keyScheduled = false;
   // Backend flag: demo until TV token flow verified (U4); flip to real data behind this.
   const USE_BACKEND = false;
 
@@ -104,44 +110,79 @@
     if (!action) return;
     e.preventDefault();
     lp.start(action);
-    setTimeout(() => {
-      switch (action) {
-        case 'up': case 'down': case 'left': case 'right':
-          nav.move(action);
-          break;
-        case 'enter': {
-          const f = nav.focused();
-          (f?.el as HTMLButtonElement | undefined)?.click();
-          break;
-        }
-        case 'back':
-          if (!nav.goBack()) console.info('[nav] at top of stack');
-          break;
-        case 'ch-up': nav.move('right'); break;
-        case 'ch-down': nav.move('left'); break;
-        default:
-          console.info(`[keys] ${action} (unmapped in PoC)`);
-      }
-    }, 0);
+    // Coalesce key repeats: drop anything arriving while one is in flight,
+    // so held keys never queue an animation per repeat (skill §6/§7).
+    if (keyScheduled) return;
+    keyScheduled = true;
+    setTimeout(() => { keyScheduled = false; handle(action); }, 0);
   }
-  function onKeyUp() { lp.stop(); }
+  function onKeyUp() {
+    lp.stop();
+    nav.release();
+  }
+
+  function handle(action: Action): void {
+    if (dialogOpen) {
+      if (action === 'enter') nav.focused()?.el.click();
+      else if (action === 'back' || action === 'backspace') closeDialog(false);
+      else if (['up', 'down', 'left', 'right'].includes(action)) nav.move(action as 'up' | 'down' | 'left' | 'right');
+      return;
+    }
+    switch (action) {
+      case 'up': case 'down': case 'left': case 'right':
+        nav.move(action);
+        break;
+      case 'enter': {
+        nav.press();
+        const f = nav.focused();
+        (f?.el as HTMLButtonElement | undefined)?.click();
+        break;
+      }
+      case 'back': case 'backspace':
+        if (!nav.goBack()) openDialog(); // at root: ask before exiting
+        break;
+      case 'ch-up': nav.move('right'); break;
+      case 'ch-down': nav.move('left'); break;
+      default:
+        console.info(`[keys] ${action} (unmapped in PoC)`);
+    }
+  }
+
+  function openDialog(): void {
+    dialogReturn = nav.focused()?.id ?? null;
+    dialogOpen = true;
+  }
+  function closeDialog(confirmed: boolean): void {
+    dialogOpen = false;
+    nav.setModal(null);
+    if (confirmed) {
+      try { window.close(); } catch { /* not permitted — TV standby path later */ }
+      return;
+    }
+    if (dialogReturn && nav.get(dialogReturn)) nav.focus(dialogReturn, false);
+    else nav.focusFirst();
+  }
 </script>
 
 <svelte:window on:keydown={onKeyDown} on:keyup={onKeyUp} />
+
+<Ambient />
 
 <div class="shell">
   <TopBar {utilities} />
 
   {#if loaded}
     <div class="rows">
-      {#if heroItems.length}
-        <Hero items={heroItems} />
+      <div class="shelf hero-shelf">
+        {#if heroItems.length}
+          <Hero items={heroItems} />
+        {/if}
         <div class="quick-row">
           {#each favorites as tile (tile.id)}
             <AppTile {tile} row={0} />
           {/each}
         </div>
-      {/if}
+      </div>
 
       {#each contentRows as row, i}
         <Row title={row.title}>
@@ -158,16 +199,17 @@
           {/each}
         </Row>
       {/if}
-
-   </div>
+    </div>
   {:else}
-    <div class="loading">Loading…</div>
-  {/if}
-
-  {#if !hasFirmware()}
-    <div class="mock-banner">Desktop mode — firmware bridges mocked</div>
+    <Skeleton />
   {/if}
 </div>
+
+<Dialog open={dialogOpen} oncancel={() => closeDialog(false)} onconfirm={() => closeDialog(true)} />
+
+{#if !hasFirmware()}
+  <div class="mock-banner">Desktop mode — firmware bridges mocked</div>
+{/if}
 
 <style>
   .shell {
@@ -178,32 +220,40 @@
   }
   .rows {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 4px 28px 28px;
+    display: flex;
+    flex-direction: column;
+    /* single source of the safe-area inset; bleeding tracks compensate it.
+       Inter-shelf spacing comes from the global margin rule in app.css
+       (flex `gap` is unverified on this build). */
+    padding: 16px var(--safe-x) var(--safe-y);
     scrollbar-width: none;
   }
   .rows::-webkit-scrollbar { display: none; }
   .quick-row {
     display: flex;
-    gap: 14px;
-    margin: 18px 0 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+    scroll-padding-inline: var(--safe-x);
+    /* top margin is the visual hero→tiles gap; padding is focus-growth
+       headroom; negative side margins bleed the track to the screen edge */
+    padding: 10px var(--safe-x) 6px;
+    margin: 12px calc(-1 * var(--safe-x)) -6px;
   }
-  .loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    color: var(--faint);
-  }
+  .quick-row::-webkit-scrollbar { display: none; }
   .mock-banner {
     position: fixed;
-    right: 12px;
-    bottom: 12px;
-    font-size: 11px;
+    right: 16px;
+    bottom: 16px;
+    font-size: var(--fs-caption);
     color: var(--faint);
-    background: var(--surface);
-    border-radius: 6px;
-    padding: 4px 8px;
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: 999px;
+    padding: 4px 12px;
   }
 </style>

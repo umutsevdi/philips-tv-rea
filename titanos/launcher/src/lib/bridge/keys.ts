@@ -12,6 +12,7 @@ const KEYMAP: Record<string, Action> = {
   ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
   // enter / back
   Enter: 'enter',
+  Backspace: 'back',
   // Vewd back key
   Unidentified: 'back', // code 461 surfaces as Unidentified on some builds; handled by keyCode below
   // colour keys: string names (newer) and HbbTV codes

@@ -1,7 +1,10 @@
 /* Spatial navigation engine. The performance-critical piece (docs/08):
    a flat registry of focusable elements, nearest-in-direction resolution,
    scrollIntoView, and focus persistence. No framework reactivity on the
-   hot path — direct DOM class toggling. */
+   hot path — direct DOM class toggling.
+
+   Focus visuals are class-driven (.focused/.pressed), never native :focus,
+   so engine state and rendered state can't disagree (skill §5). */
 
 export interface Focusable {
   id: string;               // stable, e.g. 'row:0:tile:2'
@@ -15,6 +18,8 @@ let focusedId: string | null = null;
 const BACK_STACK_KEY = 'launcher.backstack';
 const LAST_FOCUS_KEY = 'launcher.lastfocus';
 let backStack: string[] = loadStack();
+let anchorX: number | null = null;   // column memory across vertical moves
+let modalRoot: HTMLElement | null = null;
 
 function loadStack(): string[] {
   try { return JSON.parse(localStorage.getItem(BACK_STACK_KEY) ?? '[]'); } catch { return []; }
@@ -40,12 +45,25 @@ export function all(): Focusable[] {
   return [...registry.values()];
 }
 
+/** Depth system: mark the shelf holding focus, dim its siblings. */
+function markShelves(el: HTMLElement): void {
+  const shelf = el.closest('.shelf');
+  const shelves = document.querySelectorAll<HTMLElement>('.shelf');
+  for (const s of shelves) {
+    s.classList.toggle('dimmed', !!shelf && s !== shelf);
+  }
+}
+
 function applyFocus(f: Focusable): void {
   const prev = focusedId ? registry.get(focusedId) : undefined;
-  if (prev) prev.el.classList.remove('focused');
+  if (prev) {
+    prev.el.classList.remove('focused');
+    prev.el.classList.remove('pressed');
+  }
   focusedId = f.id;
   f.el.classList.add('focused');
   f.el.focus({ preventScroll: true });
+  markShelves(f.el);
   scrollIntoViewThrottled(f.el);
   try { localStorage.setItem(LAST_FOCUS_KEY, f.id); } catch { /* full */ }
 }
@@ -63,6 +81,30 @@ function scrollIntoViewThrottled(el: HTMLElement): void {
   });
 }
 
+/** Modal scoping: while set, move() only resolves inside this subtree. */
+export function setModal(root: HTMLElement | null): void {
+  modalRoot = root;
+}
+
+/** Focus the first element inside a modal subtree (row/col order). */
+export function focusWithin(root: HTMLElement): boolean {
+  const list = all()
+    .filter((f) => root.contains(f.el))
+    .sort((a, b) => a.row - b.row || a.col - b.col);
+  if (list[0]) { anchorX = null; applyFocus(list[0]); return true; }
+  return false;
+}
+
+/** Pressed state, driven by the App's keydown/keyup. */
+export function press(): void {
+  focused()?.el.classList.add('pressed');
+}
+
+export function release(): void {
+  const f = focused();
+  if (f) f.el.classList.remove('pressed');
+}
+
 export function focus(id: string, pushStack = true): void {
   const f = registry.get(id);
   if (!f) return;
@@ -70,6 +112,7 @@ export function focus(id: string, pushStack = true): void {
     backStack.push(focusedId);
     saveStack();
   }
+  anchorX = null;
   applyFocus(f);
 }
 
@@ -77,7 +120,12 @@ export function focused(): Focusable | undefined {
   return focusedId ? registry.get(focusedId) : undefined;
 }
 
-/** Move focus to the nearest focusable in `dir`, comparing rectangle centers. */
+/** Move focus to the nearest focusable in `dir`.
+
+    Vertical moves keep a column anchor: the x you departed from persists
+    across consecutive up/down moves, so drift never accumulates between
+    rows of different widths (skill §6 focus memory). Horizontal moves
+    re-anchor on the next vertical departure. */
 export function move(dir: 'up' | 'down' | 'left' | 'right'): void {
   const cur = focused();
   if (!cur) { focusFirst(); return; }
@@ -85,10 +133,19 @@ export function move(dir: 'up' | 'down' | 'left' | 'right'): void {
   const cx = from.left + from.width / 2;
   const cy = from.top + from.height / 2;
 
+  const vertical = dir === 'up' || dir === 'down';
+  if (vertical) {
+    if (anchorX === null) anchorX = cx;
+  } else {
+    anchorX = null; // horizontal intent resets column memory
+  }
+  const colX = vertical ? (anchorX ?? cx) : cx;
+
   let best: Focusable | null = null;
   let bestScore = Infinity;
   for (const f of registry.values()) {
     if (f.id === cur.id) continue;
+    if (modalRoot && !modalRoot.contains(f.el)) continue;
     const r = f.el.getBoundingClientRect();
     const fx = r.left + r.width / 2;
     const fy = r.top + r.height / 2;
@@ -100,8 +157,8 @@ export function move(dir: 'up' | 'down' | 'left' | 'right'): void {
     if (dir === 'up' && dy >= -4) continue;
     if (dir === 'down' && dy <= 4) continue;
     // primary axis distance, penalize sideways drift heavily
-    const primary = dir === 'left' || dir === 'right' ? Math.abs(dx) : Math.abs(dy);
-    const drift = dir === 'left' || dir === 'right' ? Math.abs(dy) : Math.abs(dx);
+    const primary = vertical ? Math.abs(dy) : Math.abs(dx);
+    const drift = vertical ? Math.abs(fx - colX) : Math.abs(dy);
     const score = primary + drift * 3;
     if (score < bestScore) { bestScore = score; best = f; }
   }
@@ -112,16 +169,20 @@ export function focusFirst(): void {
   const list = all().sort((a, b) => a.row - b.row || a.col - b.col);
   // skip the utility bar (row -1): land on content, Up reaches it from there
   const first = list.find((f) => f.row >= 0) ?? list[0];
-  if (first) applyFocus(first);
+  if (first) { anchorX = null; applyFocus(first); }
 }
 
-/** Back key: pop the focus stack; returns true when something was restored. */
+/** Back key: pop the focus stack, skipping ids that are no longer mounted;
+    returns true when something was restored. */
 export function goBack(): boolean {
-  const prev = backStack.pop();
-  saveStack();
-  if (prev && registry.has(prev)) {
-    applyFocus(registry.get(prev)!);
-    return true;
+  while (backStack.length) {
+    const prev = backStack.pop()!;
+    saveStack();
+    if (registry.has(prev)) {
+      anchorX = null;
+      applyFocus(registry.get(prev)!);
+      return true;
+    }
   }
   return false;
 }
@@ -129,11 +190,16 @@ export function goBack(): boolean {
 /** Restore last focus from a previous session, if the element exists. */
 export function restoreLast(): boolean {
   const id = localStorage.getItem(LAST_FOCUS_KEY);
-  if (id && registry.has(id)) { applyFocus(registry.get(id)!); return true; }
+  if (id && registry.has(id)) {
+    anchorX = null;
+    applyFocus(registry.get(id)!);
+    return true;
+  }
   return false;
 }
 
 export function reset(): void {
   registry.clear();
   focusedId = null;
+  anchorX = null;
 }

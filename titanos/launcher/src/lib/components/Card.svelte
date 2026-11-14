@@ -29,7 +29,7 @@
 
 <button bind:this={el} class="focusable card" id={id} tabindex="-1" on:click={open}>
   {#if artwork}
-    <img src={artwork} alt="" loading="lazy" />
+    <img src={artwork} alt="" loading="lazy" decoding="async" />
   {:else}
     <div class="noart" style:background={posterGrad(item.id)}>{item.title?.[0] ?? '#'}</div>
   {/if}
@@ -40,22 +40,25 @@
 
 <style>
   .card {
-    width: 240px;
+    width: var(--span-3);
     border-radius: var(--radius);
     overflow: hidden;
-    background: var(--surface);
     text-align: left;
     flex-shrink: 0;
   }
+  .card:global(.focused) { background: var(--glass-2); }
   .card img {
     width: 100%;
-    aspect-ratio: 16 / 9;
+    height: 152px; /* 16:9 of span-3; fallback for builds without aspect-ratio */
     object-fit: cover;
     background: var(--surface-2);
   }
+  @supports (aspect-ratio: 16 / 9) {
+    .card img { height: auto; aspect-ratio: 16 / 9; }
+  }
   .noart {
     width: 100%;
-    aspect-ratio: 16 / 9;
+    height: 152px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -63,13 +66,20 @@
     font-size: 40px;
     color: rgba(232, 237, 242, 0.25);
   }
+  @supports (aspect-ratio: 16 / 9) {
+    .noart { height: auto; aspect-ratio: 16 / 9; }
+  }
   .title {
-    padding: 8px 10px;
-    font-size: 13px;
+    padding: 9px 12px 11px;
+    font-family: var(--font-display);
+    font-size: var(--fs-title);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: var(--lh-tight);
     color: var(--dim);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .card:focus .title { color: var(--text); }
+  .card:global(.focused) .title { color: var(--text); }
 </style>
