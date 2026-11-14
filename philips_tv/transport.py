@@ -17,6 +17,9 @@ Firmware quirks this module works around (details in README):
 3. POST bodies: the TV answers a body-less POST with 503 (never issues a
    challenge for it), which breaks curl's --digest for POSTs. We always
    send the body ourselves, so this does not affect us.
+
+Set transport.log_fn to a callable to receive a log line for every
+request/response (used by the GUI's activity console).
 """
 import hashlib
 import http.client
@@ -24,8 +27,9 @@ import json
 import re
 import secrets
 import ssl
-from dataclasses import dataclass
-from typing import Any, Optional
+import time
+from dataclasses import dataclass, field
+from typing import Any, Callable, Optional
 
 # Cipher list tuned so the ssl module negotiates like curl; the TV
 # rejects Python's default preference order at the TLS layer.
@@ -69,10 +73,18 @@ class JointSpaceTransport:
         self.port = port
         self.timeout = timeout
         self.credentials: Optional[Credentials] = None
+        self.log_fn: Optional[Callable[[str], None]] = None
         self._ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         self._ctx.check_hostname = False
         self._ctx.verify_mode = ssl.CERT_NONE
         self._ctx.set_ciphers(CURL_CIPHERS)
+
+    def _log(self, line: str):
+        if self.log_fn:
+            try:
+                self.log_fn(line)
+            except Exception:  # noqa: BLE001 - logging must never break requests
+                pass
 
     # -- public API --------------------------------------------------
 
@@ -93,6 +105,8 @@ class JointSpaceTransport:
         which is what the /6/* endpoints expect.
         """
         payload = json.dumps(body).encode() if body is not None else None
+        started = time.monotonic()
+        self._log(f"→ {method} {path}" + (f" {json.dumps(body)[:80]}" if payload else ""))
         conn = self._connect()
         try:
             conn.request(method, path, body=payload,
@@ -100,14 +114,19 @@ class JointSpaceTransport:
             resp = conn.getresponse()
             data = resp.read().decode(errors="replace")
             if resp.status != 401 or self.credentials is None:
+                ms = int((time.monotonic() - started) * 1000)
+                self._log(f"← {resp.status} {path} ({ms} ms, {len(data)} B)")
                 return Response(resp.status, dict(resp.getheaders()), data)
 
+            self._log(f"← 401 {path} — digest challenge, retrying with credentials")
             auth = self._digest_header(method, path, resp.getheader("WWW-Authenticate", ""))
             if single_connection:
                 conn.request(method, path, body=payload,
                              headers={"Content-Type": "application/json", "Authorization": auth})
                 resp = conn.getresponse()
                 data = resp.read().decode(errors="replace")
+                ms = int((time.monotonic() - started) * 1000)
+                self._log(f"← {resp.status} {path} ({ms} ms, {len(data)} B) [same-conn]")
                 return Response(resp.status, dict(resp.getheaders()), data)
         finally:
             conn.close()
@@ -119,6 +138,8 @@ class JointSpaceTransport:
                              headers={"Content-Type": "application/json", "Authorization": auth})
                 resp = conn.getresponse()
                 data = resp.read().decode(errors="replace")
+                ms = int((time.monotonic() - started) * 1000)
+                self._log(f"← {resp.status} {path} ({ms} ms, {len(data)} B)")
                 return Response(resp.status, dict(resp.getheaders()), data)
             finally:
                 conn.close()

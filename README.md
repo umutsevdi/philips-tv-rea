@@ -216,4 +216,4 @@ tvctl.py         CLI entrypoint
 MIT — see [LICENSE](LICENSE).
 
 ---
-Assisted by [imza](imza.run).
+Assisted by [imza](https://imza.run).

@@ -9,6 +9,9 @@ Usage:
   tvctl volume [0-MAX]            show or set volume
   tvctl mute                      toggle mute
   tvctl key <KEY>                 send a remote key (Standby, Home, Confirm, ...)
+  tvctl keys                      list all known remote keys
+  tvctl settings                  dump the settings-menu node tree
+  tvctl channels                  list installed channel lists
   tvctl post <path> <json>        raw authenticated POST (advanced)
   tvctl gui                       launch the desktop GUI
 
@@ -90,6 +93,23 @@ def cmd_key(args):
     print("OK" if ok else f"FAILED ({args.key})")
 
 
+def cmd_keys(args):
+    from philips_tv.tv import KNOWN_KEYS
+    print("\n".join(KNOWN_KEYS))
+    print("Standby  (works, but powers the TV off - use deliberately)")
+
+
+def cmd_settings(args):
+    tv = get_tv()
+    print(json.dumps(tv.settings_tree(), indent=1))
+
+
+def cmd_channels(args):
+    tv = get_tv()
+    print(json.dumps(tv.channel_lists(), indent=1))
+
+
+
 def cmd_post(args):
     tv = get_tv()
     resp = tv.transport.post(args.path, json.loads(args.body))
@@ -131,6 +151,9 @@ def main():
     p.set_defaults(fn=cmd_post)
 
     sub.add_parser("gui").set_defaults(fn=cmd_gui)
+    sub.add_parser("keys").set_defaults(fn=cmd_keys)
+    sub.add_parser("settings").set_defaults(fn=cmd_settings)
+    sub.add_parser("channels").set_defaults(fn=cmd_channels)
 
     args = parser.parse_args()
     try:
