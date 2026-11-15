@@ -15,10 +15,10 @@
   import { actionFor, hotkeyFor, LongPress } from './lib/bridge/keys';
   import type { Action } from './lib/bridge/keys';
   import * as nav from './lib/nav/spatial';
-  import { notifyVersion, hasFirmware } from './lib/bridge/device';
-  import { fetchHome, specFromDeeplink } from './lib/api/titan';
+  import { notifyVersion, hasFirmware, isDesktopDev } from './lib/bridge/device';
+  import { DEMO_HERO, DEMO_ROWS, DEMO_CHANNELS } from './lib/api/demo';
+  import { fetchHome, fetchOnNow, specFromDeeplink } from './lib/api/titan';
   import type { PageList, Tile, ContentItem } from './lib/api/titan';
-  import { DEMO_HERO, DEMO_ROWS } from './lib/api/demo';
   import { channels as fetchChannels } from './lib/api/tv';
   import type { TvChannel } from './lib/api/tv';
   import { pins, togglePin } from './lib/apps/pins';
@@ -35,10 +35,9 @@
   let baseTiles: Tile[] = (tilesJson as { tiles: Tile[] }).tiles;
 
   let heroItems: ContentItem[] = [];
-  let contentRows: { title: string; items: ContentItem[] }[] = [];
+  let contentRows: PageList[] = [];
   let channelList: TvChannel[] = [];
   let loaded = false;
-  let demoNow: Record<string, string> = {};
 
   /* View switching: home stays mounted (focus memory, scroll position),
      Apps mounts on demand. The spatial engine's scope confines D-pad moves
@@ -63,47 +62,41 @@
 
   /* 6 tiles fit one safe-area row exactly: 6*172px + 5*24px = 1152px.
      Tiles are balanced across the rows (store tile included in the count,
-     always last) so stretch fills every row flush; overflow beyond two
-     rows lives in the store, where pinned apps can be removed. */
+     always last) so stretch fills every row flush. Any number of pinned
+     apps renders — the rows container scrolls vertically; the spatial
+     engine's row-banding resolves D-pad moves across however many rows
+     exist. The last row is balanced by perRow so it never strands a
+     lone tile (13 tiles → 5/5/3, not 6/6/1). */
   const APPS_PER_ROW = 6;
   $: totalTiles = favorites.length + 1; // + the store tile
-  $: rowCount = Math.min(2, Math.ceil(totalTiles / APPS_PER_ROW));
+  $: rowCount = Math.max(1, Math.ceil(totalTiles / APPS_PER_ROW));
   $: perRow = Math.min(APPS_PER_ROW, Math.ceil(totalTiles / rowCount));
-  $: appRow1 = favorites.slice(0, perRow);
-  $: appRow2 = favorites.slice(perRow, APPS_PER_ROW * 2 - 1);
+  $: tileRows = chunk(favorites, perRow, rowCount);
+
+  function chunk(list: Tile[], size: number, count: number): Tile[][] {
+    const rows: Tile[][] = [];
+    for (let i = 0; i < count; i++) rows.push(list.slice(i * size, (i + 1) * size));
+    return rows;
+  }
 
   /* Showcase shows (all demo/backend rows flattened) render as the "On now"
      row; live channels get their own "Watch live" row below it. */
-  $: showcaseItems = contentRows.flatMap((r) => r.items);
+  $: showcaseItems = contentRows.flatMap((r) => r.items ?? []);
 
+  /* Desktop-dev filler ONLY — the isDesktopDev() gate at both call sites
+     keeps the TV free of fake content: on the TV an empty row means "no
+     real data", never "placeholder". */
   function showDemo() {
     if (!heroItems.length) heroItems = DEMO_HERO;
-    if (!channelList.length) {
-      channelList = [
-        { id: 1, number: 1, name: 'BBC One', logo: '' },
-        { id: 2, number: 2, name: 'BBC Two', logo: '' },
-        { id: 3, number: 3, name: 'ITV 1', logo: '' },
-        { id: 4, number: 4, name: 'Channel 4', logo: '' },
-        { id: 101, number: 101, name: 'CBBC', logo: '' },
-        { id: 201, number: 201, name: 'Sky News', logo: '' },
-        { id: 301, number: 301, name: 'Eurosport', logo: '' },
-      ];
-      demoNow = {
-        '1': 'Match of the Day', '2': 'Frozen Planet', '3': 'The Chase',
-        '4': 'Grand Designs', '101': 'Blue Peter', '201': 'Breaking News',
-        '301': 'Cycling: Tour Highlights',
-      };
-    }
-    if (!contentRows.length) {
-      contentRows = DEMO_ROWS.map((r) => ({ title: r.title ?? 'On now', items: r.items ?? [] }));
-    }
+    if (!contentRows.length) contentRows = DEMO_ROWS.map((r) => ({ ...r, title: r.title ?? 'On now', items: r.items ?? [] }));
   }
 
   onMount(async () => {
     notifyVersion('0.1.0-poc');
 
     if (new URLSearchParams(location.search).has('instant')) {
-      showDemo();
+      /* `?instant` = UI development shortcut; desktop-only by definition. */
+      if (isDesktopDev()) showDemo();
       loaded = true;
       setTimeout(() => { if (!nav.restoreLast()) nav.focusFirst(); }, 0);
       return;
@@ -116,6 +109,10 @@
     catalog = await loadCatalog(); // /me/apps + DEVICE_APPS → catalog.json
 
     const home = await fetchHome(); // /me/pages, token-gated
+    const onNow = await fetchOnNow(); // /epg, token-gated: shows airing right now
+    if (onNow.length) contentRows = [...onNow, ...contentRows];
+    // hero: first strong item of the first content row, if any
+    if (!heroItems.length && contentRows[0]?.items?.length) heroItems = contentRows[0].items.slice(0, 3);
     if (home) {
       for (const list of home) {
         if (list.type === 'apps_list' || list.type === 'favorites_list') {
@@ -129,18 +126,19 @@
           const seen = new Set(backend.map((t) => t.id));
           baseTiles = [...backend, ...baseTiles.filter((t) => !seen.has(t.id))];
         } else if (list.items?.length) {
-          contentRows = [...contentRows, { title: list.title ?? 'For you', items: list.items.slice(0, 12) }];
+          contentRows = [...contentRows, { ...list, title: list.title ?? 'For you', items: list.items.slice(0, 12) }];
         }
       }
     }
 
-    showDemo(); // fills only what the real sources left empty
-
-    const chans = await fetchChannels(); // proxy → demo channels stay on failure
+    const chans = await fetchChannels(); // proxy; dead daemon → demo on desktop only
     if (chans?.length) {
       channelList = chans.slice(0, 20);
-      demoNow = {}; // real EPG data arrives with a healthy TV daemon
+    } else if (isDesktopDev()) {
+      channelList = DEMO_CHANNELS;
     }
+
+    if (isDesktopDev()) showDemo(); // desktop filler only; TV stays real-only
 
     loaded = true;
     setTimeout(() => { if (!nav.restoreLast()) nav.focusFirst(); }, 0);
@@ -294,22 +292,16 @@
         {#if heroItems.length}
           <Hero items={heroItems} />
         {/if}
-        <div class="quick-row">
-          {#each appRow1 as tile (tile.id)}
-            <AppTile {tile} row={0} />
-          {/each}
-          {#if totalTiles <= APPS_PER_ROW}
-            <StoreTile onopen={openApps} />
-          {/if}
-        </div>
-        {#if totalTiles > APPS_PER_ROW}
-          <div class="quick-row second">
-            {#each appRow2 as tile (tile.id)}
-              <AppTile {tile} row={0} />
+        {#each tileRows as rowTiles, i (i)}
+          <div class="quick-row" class:second={i > 0}>
+            {#each rowTiles as tile (tile.id)}
+              <AppTile {tile} row={i} />
             {/each}
-            <StoreTile onopen={openApps} />
+            {#if i === tileRows.length - 1}
+              <StoreTile onopen={openApps} />
+            {/if}
           </div>
-        {/if}
+        {/each}
       </div>
 
       {#if showcaseItems.length}
@@ -323,7 +315,7 @@
       {#if channelList.length}
         <Row title="Watch live">
           {#each channelList as ch (ch.id)}
-            <ChannelCard channel={ch} row={2} nowPlaying={demoNow[String(ch.id)] ?? null} />
+            <ChannelCard channel={ch} row={2} />
           {/each}
         </Row>
       {/if}
@@ -346,7 +338,7 @@
   options={dialogState?.options ?? []}
 />
 
-{#if !hasFirmware()}
+{#if isDesktopDev()}
   <div class="mock-banner">Desktop mode — firmware bridges mocked</div>
 {/if}
 

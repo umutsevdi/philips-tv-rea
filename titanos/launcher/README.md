@@ -91,16 +91,16 @@ python3 ../proxy/server.py --tv 192.168.1.239 --port 8080
 
 ## Open on-device probes (docs/09)
 
-1. U1: are `window.loadApp`/bridges available off the launcher origin?
-   **Partially answered on-device:** the Internet browser app has none of
-   the injected members (probe verdict: 0/N) — the dialect is bound to the
-   launcher webview. Open `probe.html` (built into `dist/`, no build step)
-   in any context to re-run: table of `typeof` per member, read-only
-   getters, live `loadApp`/`loadLocalUI` test buttons, UA + origin footer.
-   Remaining half of U1: serve our page *from the pinned launcher origin*
-   and re-probe (needs the DNS-override experiment, U2).
-2. Keycode capture: confirm 461 back and 401–406 colour keys on-device.
-3. Broadcast chain: which of `launchLinearChannel`/`loadLocalUI`/AIT works?
-4. `getToken()` header format (U4) if the backend rejects our Bearer guess.
+1. ~~U1~~ **Answered on-device:** the Internet browser has none of the
+   injected members (probe verdict: 0/N) — the dialect is bound to the
+   launcher webview. Re-run anytime with `probe.html` (built into `dist/`).
+   Remaining half: serve our page *from the pinned launcher origin* (U2).
+2. **U2 DNS override** — the next experiment: router entry
+   `app.titanos.tv` → our server; proves whether we can own the boot
+   screen and captures the firmware's `?jwt=` token in the same run.
+3. Keycode capture: confirm 461 back and 401–406 colour keys on-device.
+4. Live backend shape: with a token (from U2 or mitmproxy), verify our
+   `/apps` + `/epg` parsing against real responses (the envelope is still
+   inferred: array vs `{apps:[…]}`).
 5. TV API daemon health: `tvctl.py status` — 404-empty means wedged,
    needs a 30 s wall power-cycle.

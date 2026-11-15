@@ -1,9 +1,10 @@
-/* Demo content for desktop/offline. Structured exactly like the Titan
-   backend rows (docs/04) so swapping in real data later is a type change,
-   not a layout change. Home shows ONE showcase row — the stock launcher's
-   show volume is mostly paid promo lists (docs/04/05), which we don't
-   imitate (docs/08 de-bloat). Images: picsum placeholders seeded per item,
-   standing in for backend artwork_landscape until Phase 2. */
+/* Demo content — DESKTOP DEV ONLY (isDesktopDev gate in App.svelte).
+   Never rendered on the TV: on the TV every pixel comes from real sources
+   (TV channels via the proxy, Titan backend when a token exists), and an
+   empty row stays honestly empty instead of showing fake shows.
+   Structured exactly like the Titan backend rows (docs/04) so swapping in
+   real data later is a type change, not a layout change. Images: picsum
+   placeholders seeded per item, standing in for backend artwork. */
 
 import type { PageList, ContentItem } from './titan';
 
@@ -30,9 +31,6 @@ export const DEMO_HERO: ContentItem[] = [
   item('hero-3', 'Formula 1: Drive to Survive', 'Behind the scenes of the world’s fastest motorsport.', 'prime_video', 'https://www.primevideo.com', 1280),
 ];
 
-/* The single showcase row: our curated mix of shows + live channels
-   (channels are appended in App.svelte), deeplinked into whichever app
-   streams each title. Not a partner promo shelf. */
 export const DEMO_ROWS: PageList[] = [
   {
     id: 'demo-on-now', type: 'top_movies_list', title: 'On now',
@@ -47,4 +45,15 @@ export const DEMO_ROWS: PageList[] = [
       item('nf-4', 'Bodyguard', 'A war veteran protects a controversial politician.', 'netflix', 'https://www.netflix.com'),
     ],
   },
+];
+
+/* Demo channel lineup for desktop dev — mirrors a real channel DB shape. */
+export const DEMO_CHANNELS = [
+  { id: 1, number: 1, name: 'BBC One', logo: '' },
+  { id: 2, number: 2, name: 'BBC Two', logo: '' },
+  { id: 3, number: 3, name: 'ITV 1', logo: '' },
+  { id: 4, number: 4, name: 'Channel 4', logo: '' },
+  { id: 101, number: 101, name: 'CBBC', logo: '' },
+  { id: 201, number: 201, name: 'Sky News', logo: '' },
+  { id: 301, number: 301, name: 'Eurosport', logo: '' },
 ];

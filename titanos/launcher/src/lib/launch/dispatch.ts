@@ -15,6 +15,12 @@ const TV_SHELL = /Vewd|Whale|HbbTV|SmartTV|SMART-TV|NetCast|Tizen|Web0S|Philips|
   .test(navigator.userAgent);
 
 function openFallback(url: string, what: string): void {
+  /* localfunction:… payloads are firmware-only (the TV's loadApp/GotoFVPApp
+     resolve them); never hand them to a plain navigation. */
+  if (!/^https?:/i.test(url)) {
+    console.info(`[launch] ${what}: firmware-only deeplink dropped: ${url}`);
+    return;
+  }
   if (TV_SHELL) {
     console.info(`[launch] no firmware bridge, navigating: ${url}`);
     window.location.assign(url);

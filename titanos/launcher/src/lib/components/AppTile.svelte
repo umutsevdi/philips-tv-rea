@@ -2,8 +2,9 @@
   import { launch } from '../launch/dispatch';
   import { register, unregister } from '../nav/spatial';
   import { onMount } from 'svelte';
-  import { Settings, RadioReceiver, Calendar, Folder, Globe, List, Radio, Tv, Pin, Circle } from '@lucide/svelte';
+  import { Settings, RadioReceiver, Calendar, Folder, Globe, List, Radio, Tv, Pin } from '@lucide/svelte';
   import type { Tile } from '../api/titan';
+  import { tileArt } from '../apps/art';
 
   export let tile: Tile;
   export let row = 0;
@@ -18,22 +19,14 @@
 
   const lucideMap: Record<string, any> = { Settings, RadioReceiver, Calendar, Folder, Globe, List, Radio, Tv };
 
-  // 'ui' tiles use lucide icons; lettermark brands render text; everything
-  // else loads the committed brand SVG from public/brands/.
-  $: kind = tile.brand === 'ui' ? 'icon'
-    : ['prime', 'disney', 'rakuten'].includes(tile.brand ?? '') ? 'letter'
-    : tile.brand ? 'svg' : 'plain';
+  /* One art chain for every tile (lib/apps/art.ts): remote CDN icon →
+     committed brand SVG → generated monogram. The monogram shows until an
+     image proves it can render, and takes over again if the image fails. */
+  $: art = tileArt(tile);
+  $: showImg = art.kind !== 'monogram' && !imgFailed;
   $: icon = lucideMap[tile.icon ?? ''];
-  $: svgUrl = kind === 'svg' ? `/brands/${tile.brand}.svg` : '';
-
-  function letterText(): string {
-    switch (tile.brand) {
-      case 'prime': return 'prime';
-      case 'disney': return 'D+';
-      case 'rakuten': return 'R';
-      default: return tile.name[0];
-    }
-  }
+  let imgFailed = false;
+  $: if (art.kind === 'monogram') imgFailed = false;
 
   function open() { if (onopen) onopen(); else launch(tile.launch); }
   onMount(() => {
@@ -48,16 +41,13 @@
       <Pin size={12} strokeWidth={2.5} />
     </span>
   {/if}
-  {#if kind === 'icon' && icon}
+  {#if tile.brand === 'ui' && icon}
     {@const Icon = icon}
-    <Icon size={40} strokeWidth={1.5} color="var(--dim)" />
-  {:else if kind === 'letter'}
-    <div class="lettermark" style:background={tile.color ?? 'var(--surface-2)'}>{letterText()}</div>
-  {:else if kind === 'svg'}
-    <img class="brand" src={svgUrl} alt="" loading="lazy" decoding="async" />
+    <span class="ui-icon"><Icon size={40} strokeWidth={1.5} color="var(--dim)" /></span>
+  {:else if showImg}
+    <img class="brand" src={art.src} alt="" loading="lazy" decoding="async" on:error={() => { imgFailed = true; }} />
   {:else}
-    {@const Fallback = Circle}
-    <Fallback size={40} strokeWidth={1.5} color="var(--dim)" />
+    <span class="monogram" style:background={`hsl(${art.hue} 32% 26%)`}>{art.initials}</span>
   {/if}
   <div class="name">{tile.name}</div>
 </button>
@@ -91,11 +81,10 @@
     height: 52px;
     object-fit: contain;
   }
-  .lettermark {
-    min-width: 56px;
-    height: 40px;
-    padding: 0 12px;
-    border-radius: 8px;
+  .monogram {
+    width: 52px;
+    height: 52px;
+    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;

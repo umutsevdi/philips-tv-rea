@@ -5,10 +5,20 @@
 - Production API: `https://eu.app.titanos.tv` (default when `getEnvUrl` is
   absent; otherwise `https://${window.getEnvUrl()}`).
 - Other envs in the bundles: `dev01.titanos.tv`, `cert03.titanos.tv`,
-  `app.dev03.titanos.tv` (mock images).
+  `app.dev03.titanos.tv` (mock images). `dev01` also serves production
+  artwork (`:443/img/…` icon URLs throughout the mock catalog).
 - Frontend origin: `app.titanos.tv`, CloudFront in front of nginx/1.31.8.
 - Host parsing: `eu.dev01.titanos.tv`-style hosts map to env `dev01`;
   `prod`/`stg`/`acc`→`stg`, `cert`→`stg`, `dev`/`qa`→`dev`.
+- Account portal: `my.titanos.tv` (production) and per-env variants
+  `my.stg01.eu.stg.titanos.tv`, `my.acc01.eu.stg.titanos.tv`,
+  `my.dev01.eu.dev.titanos.tv`.
+- Regional split: the launcher picks `eu.app.titanos.tv` from the device's
+  market (docs/06 resolution chain); the `eu.` prefix is the Europe data
+  residency region. A LATAM TV would route elsewhere.
+- Zeasn (SDK vendor, Whale browser): `smarttv.zeasn.tv` and
+  `dev-smarttv.zeasn.tv` — JSONP device-info call including the WhaleAdID
+  (lib/zeasn_sdk.js). DNS-blockable; the launcher degrades gracefully.
 
 ## Authentication [O/I]
 
@@ -38,8 +48,15 @@ Content and launcher (mostly under `/me/`):
   movistar_list, my_canal_list, avod_genre_list, sports_events_list,
   game_list, side_promotion, ...`.
 - Netflix promo tiles come from a Netflix partner endpoint with tile-cursor
-  pagination. BBC iPlayer, Channel4 (`fvc-webapp`) and UKTV links are
-  hardcoded legacy content sources.
+  pagination (hosts `tpv-9f113d55.prod.partner.netflix.net`,
+  `vestel-8b36d4fe.prod.partner.netflix.net`). BBC iPlayer, Channel4
+  (`fvc-webapp`) and UKTV links are hardcoded legacy content sources.
+- EPG: `GET /epg/<channelId>?date=<utc-date>&hour=<utc-hour>` per channel;
+  `GET /epg?drm=true&date=<utc-date>&hour=<utc-hour>&genre=<g>&page=<n>
+  &per_page=50` across channels (paged via `total_pages`). Returns channel
+  timelines whose entries carry `start_time`/`end_time` + content. This is
+  what populates the stock launcher's "on now" data. Date/hour are UTC,
+  hour floored to the current hour.
 
 ## Content item shape (relevant subset) [O]
 
@@ -59,11 +76,46 @@ Client-side post-processing pipeline (`ote`): strips Apple TV deeplinks, drops
 Apple-TV-only items, drops empty details, drops Apple TV banners, decrements
 search totals.
 
+## App catalog endpoint [O] (extracted 2026-11-15)
+
+`apps_list` rows resolve to `GET /apps?deviceModel=<model>` (rule table in
+main-CrBAgRaF.js). Response: array (or `{apps:[…]}`) of app objects:
+
+```
+{ id, code, name, icon: <Titan CDN URL>, url,
+  app_type, resolution, isFVPApp, provider }
+```
+
+`url` may be a plain https URL or a `localfunction:…` deeplink
+(`gotonetflix`, `gotoaiv`, `GotoFVPApp:Name:https://…`). The embedded mock
+catalog carries real icon URLs, e.g.
+`https://dev01.titanos.tv:443/img/kgcq59mnxsiznbe25ujicah04eqq` (Netflix).
+
+Launch dispatch per code (useCustomKeyDown `Ar`/`Nr`, verbatim):
+
+| code | dispatch |
+|---|---|
+| netflix | `GotoNetflix(url, source)` |
+| youtube | `loadApp(url‖youtube.com/tv?launch=menu, 'YouTube', 'NetTVSpecial', res‖720p)` |
+| dazn | `loadApp(url.replace('{TargetName}','philips'), …)` |
+| disney | `loadApp(url, disney‖disney_deeplink, 'Disney', res‖1080p)` |
+| prime_video / localfunction:gotoaiv | `GotoAIV(url, 'PrimeVideo')` |
+| appletv | URL + `titandata=` LZ-compressed device blob |
+| FVP (isFVPApp/provider freely/GotoFVPApp:) | `GotoFVPApp(url, name)` |
+| linear tune | `window.TuneToListedChannel(number, invokeMethod)` |
+| free_channels | `window.open(url)` |
+| media/ga/alexa/play_fi/freely/matter | `loadLocalUI(...)` |
+
 ## The API is device-gated [O]
 
-Unauthenticated requests to `/me/pages` return the SPA HTML, not JSON. The API
-needs the firmware-issued auth header, so it cannot be driven from a laptop
-without a token. The header name is not extracted yet (09, U4).
+Unauthenticated requests to `/me/pages` return the SPA HTML, not JSON (same
+for a bogus Bearer token — verified by curl probe 2026-11-15: `200
+text/html`, never a 401). The API needs the firmware-issued auth header
+(format: 09, U4 — solved). It cannot be driven from a laptop without
+capturing a token off the TV; passive router sniffing cannot capture it
+because the token only ever crosses the network inside TLS. The capture
+route is the DNS override of `app.titanos.tv` (U2): the boot URL's `?jwt=`
+param then lands on your own server in the clear.
 
 ## QA and environments [O]
 

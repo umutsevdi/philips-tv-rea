@@ -1,17 +1,17 @@
 /* App catalog sources (docs/03 "Where the app list comes from"), merged by
    id, later sources winning:
 
-     1. catalog.json — committed offline fallback: the tier-3 webapps whose
-        launch URLs are known from the launch-model docs.
-     2. /me/apps — the device's real store list (docs/04). Gated on the
-        firmware-issued token whose header is still unverified (09/U4), so
-        it engages automatically once that probe lands.
+     1. catalog.json — committed offline fallback, extracted from the
+        stock 1.241.1 bundle's embedded mock catalog (real URLs + CDN icons).
+     2. /apps?deviceModel= — the live store list (docs/04). Gated on the
+        firmware token chain (09/U4, solved: Bearer + ?jwt= device JWT), so
+        it engages automatically whenever a token is available.
      3. localStorage DEVICE_APPS — the FVP/Freely inventory the firmware
         caches (getDeviceContent('fvp')). Needs no backend auth and is the
         only place installed FVP launch URLs exist (09/U11).
 
-   Sources 2/3 shapes are inferred from the stock bundles and flagged for
-   the on-device probe — parsing is defensive by design. */
+   Source 2's response envelope is still inferred (array vs {apps:[…]}) —
+   parsing is defensive by design until the on-device probe confirms it. */
 
 import catalogJson from '../../../catalog.json';
 import { fetchAppCatalog } from '../api/titan';

@@ -56,6 +56,16 @@ const mocks: TitanWindow = {
 export const hasFirmware = (): boolean =>
   typeof w.loadApp === 'function' || typeof w.loadLocalUI === 'function';
 
+/* True when this renders on the TV itself — launcher webview (hasFirmware)
+   or the TV's Internet browser shell (UA). Drives the mock-data policy:
+   on the TV every pixel comes from real sources; mock/demo data is
+   desktop-dev-only, never shipped to the screen the user watches. */
+const TV_UA = /Vewd|Whale|HbbTV|SmartTV|SMART-TV|NetCast|Tizen|Web0S|Philips|TV_|armv\d|Android/i;
+export const isTv = (): boolean => hasFirmware() || TV_UA.test(navigator.userAgent);
+
+/** Desktop dev only: mock/demo content is allowed here. */
+export const isDesktopDev = (): boolean => !isTv();
+
 function api(): TitanWindow {
   return hasFirmware() ? w : { ...mocks, __mock: true } as TitanWindow;
 }
@@ -97,14 +107,14 @@ export function launchFVP(url: string, isTemplate = false): void {
 
 /** Tune by the firmware's linear-channel bridge. Returns true when a real
     bridge ran; false means the dialect is absent (desktop mock, or U1
-    origin-gating) and the caller should fall back. */
-export function tuneLinearChannel(channelNumber: number, sid?: string): boolean {
-  // No dedicated bridge observed; the stock launcher uses launchLinearChannel
-  // (docs/03 tier 1). Try the plausible names in order.
+    origin-gating) and the caller should fall back. The stock launcher calls
+    window.TuneToListedChannel(number, invokeMethod) — extracted from the
+    1.241.1 bundles (launchLinearChannel in the device class). */
+export function tuneLinearChannel(channelNumber: number, invokeMethod = 'launcher'): boolean {
   const a = w as unknown as Record<string, ((...args: unknown[]) => void) | undefined>;
-  const candidates = ['launchLinearChannel', 'LaunchLinearChannel'];
+  const candidates = ['TuneToListedChannel', 'launchLinearChannel', 'LaunchLinearChannel'];
   for (const name of candidates) {
-    if (typeof a[name] === 'function') { a[name]!(channelNumber, 'launcher', sid); return true; }
+    if (typeof a[name] === 'function') { a[name]!(channelNumber, invokeMethod); return true; }
   }
   console.info(`[mock] tuneLinearChannel(${channelNumber})`);
   return false;
@@ -114,6 +124,29 @@ export function tuneLinearChannel(channelNumber: number, sid?: string): boolean 
 
 export function token(): string | null {
   try { return w.getToken?.() ?? null; } catch { return null; }
+}
+
+/* Token chain from the stock bundles (U4, solved 2026-11-15): the device JWT
+   arrives in the launcher URL as ?jwt= and is persisted as
+   device_auth_token; window.getToken() supplies the API JWT once signed in;
+   api_auth_token is the client-side cache of the last rotation. Responses
+   rotate the token via the `authorization` response header. */
+export function deviceJwt(): string | null {
+  try {
+    const url = new URLSearchParams(window.location.search).get('jwt');
+    if (url) return url;
+    return localStorage.getItem('device_auth_token') ?? null;
+  } catch { return null; }
+}
+
+/** Remember a rotated token (response `authorization` header) and persist
+    the device JWT the firmware appended to the URL. */
+export function rememberTokens(rotated: string | null): void {
+  try {
+    const url = new URLSearchParams(window.location.search).get('jwt');
+    if (url) localStorage.setItem('device_auth_token', url);
+    if (rotated) localStorage.setItem('api_auth_token', rotated);
+  } catch { /* storage full or blocked */ }
 }
 
 export function country(): string {
