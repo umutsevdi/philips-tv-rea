@@ -5,11 +5,10 @@ Reverse engineering a Philips TV, split in two parts:
 1. **Firmware API** (this repo). The JointSpace interface on port 1926:
    pairing, key sending, volume, decrypted system info. Shipped as a working
    Python app with a GUI console and a scriptable CLI.
-2. **TitanOS app** ([`titanos/docs/`](titanos/docs/)): the launcher at
-   `app.titanos.tv` that renders your home screen, picks your ads, and
-   launches your apps. Documented from static analysis of its own JavaScript:
-   how apps launch, how the ad pipeline works, and what a replacement
-   launcher would need.
+2. **TV launcher** ([`titanos/app/`](titanos/app/)): a single SvelteKit
+   app on a Raspberry Pi that replaces the Titan OS home screen — app
+   tiles, live TV, a Nextcloud Drive browser — with no ads and no on-TV typing.
+   Research notes on the stock launcher live in [`titanos/docs/`](titanos/docs/).
 
 Both target the same hardware: a **Philips 40PFS6000/62** (TPV-made, Saphi
 Linux, JointSpace 6.1, Titan OS launcher). Most TPV-built Philips TVs should
@@ -41,6 +40,33 @@ python3 tvctl.py volume 25       # set volume
 
 Requirements: Python 3.9+ and `openssl`. No packages to install.
 
+## Quick start (TV launcher)
+
+```bash
+cd titanos/app
+npm install
+npm run build
+
+# One config file for the whole app (mode 0600):
+mkdir -p ~/.config/philips-tv-rea
+cat > ~/.config/philips-tv-rea/config.json <<'EOF'
+{
+  "nextcloud": { "base": "https://your.cloud.example",
+                 "user": "you", "app_password": "APP-PW" }
+}
+EOF
+chmod 600 ~/.config/philips-tv-rea/config.json
+
+node build
+```
+
+Desktop development: `npm run dev` (mock TV + demo content on the laptop
+only — the TV build renders real data exclusively).
+
+On the TV: open the browser app → `http://<pi-ip>:8080`, then open `/pair`
+from a laptop browser to pair with the TV API (type the TV's PIN there,
+never on the TV). Bookmark the launcher on the TV.
+
 ## Debloating
 
 The home screen loads from `app.titanos.tv`. Block that domain in any DNS
@@ -51,10 +77,10 @@ source and tracker endpoint the launcher contacts.
 
 ## Documentation
 
-The docs are numbered by topic in [`titanos/docs/`](titanos/docs/) (architecture,
-firmware API, launch model, backend, ads, device identity, MQTT, replacement
-roadmap, open questions). Firmware protocol details live in
-[AGENTS.md](AGENTS.md).
+Research notes on the stock Titan OS launcher (architecture, firmware API,
+launch model, backend auth, ads, device identity, MQTT, open questions)
+are numbered by topic in [`titanos/docs/`](titanos/docs/). Firmware protocol
+details live in [AGENTS.md](AGENTS.md).
 
 ## Troubleshooting
 

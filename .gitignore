@@ -10,5 +10,5 @@ venv/
 credentials.json
 *credentials*
 
-# proxy captures the launcher webview's boot URL (token) here
-titanos/proxy/access.log
+# launcher captures the webview's boot URL (token) here (U2 DNS test)
+access.log

@@ -7,10 +7,14 @@ live here; they use different methods and different docs.
 |---|---|---|
 | Firmware API (JointSpace, port 1926) | black-box testing against a live TV | this file |
 | TitanOS app (app.titanos.tv launcher) | static analysis of its JS bundles | [`titanos/docs/`](titanos/docs/) |
+| TV launcher app (what we ship to the TV) | SvelteKit on the Pi | [`titanos/app/`](titanos/app/), progress in [`titanos/docs/11-app-implementation.md`](titanos/docs/11-app-implementation.md) |
 
-If you work on the firmware side, read this file. If you work on the home
-app side, start with the numbered docs in [`titanos/docs/`](titanos/docs/). The two sides meet in one place: the launcher loads from the
-network, so blocking `app.titanos.tv` at DNS level removes the ads (see
+If you work on the firmware side, read this file. If you work on the
+launcher app: it is a single SvelteKit node server on the Pi (UI + TV API
+with the quirks below + Nextcloud WebDAV; the old Python proxy was folded
+into it). Research notes live in [`titanos/docs/`](titanos/docs/). The two
+sides meet in one place: the launcher loads from the network, so blocking
+`app.titanos.tv` at DNS level removes the ads (see
 [titanos/docs/05-ads-and-tracking.md](titanos/docs/05-ads-and-tracking.md)).
 
 # Part 1: Firmware API

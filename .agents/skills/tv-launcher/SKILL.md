@@ -1,10 +1,10 @@
 ---
-description: Design and build UI for the Titan OS replacement launcher on a Philips 40PFS6000/62 (Saphi Linux, Vewd/Whale Chromium derivative, Novatek 1.5 GB). Use for any visual, layout, focus, motion, performance or component work in titanos/launcher — app tiles, shelves, hero, dialogs, navigation, tokens. Encodes 10-foot legibility, 5% safe area, focus-state matrix, D-pad spatial navigation, back-key behaviour and the frame/memory budgets this chipset needs. Not for the desktop GUI in philips_tv/gui.py.
+description: Design and build UI for the Titan OS replacement launcher on a Philips 40PFS6000/62 (Saphi Linux, Vewd/Whale Chromium derivative, Novatek 1.5 GB). Use for any visual, layout, focus, motion, performance or component work in titanos/app — app tiles, shelves, hero, dialogs, navigation, tokens. Encodes 10-foot legibility, 5% safe area, focus-state matrix, D-pad spatial navigation, back-key behaviour and the frame/memory budgets this chipset needs. Not for the desktop GUI in philips_tv/gui.py.
 ---
 
 # TV launcher design skill
 
-Load this before writing or reviewing any UI in `titanos/launcher/`. It is
+Load this before writing or reviewing any UI in `titanos/app/`. It is
 prescriptive: every rule is a number, a token or a yes/no. If a rule and a
 habit from web design disagree, the rule wins.
 
@@ -21,9 +21,9 @@ habit from web design disagree, the rule wins.
 | SoC / RAM | Novatek, 1.5 GB | `titanos/docs/08-recreation-roadmap.md:70` |
 | Stock bundle | ~2.3 MB main chunk; our budget 150 KB gzip | `titanos/docs/08-recreation-roadmap.md:71` |
 | UA → platform | `TV_NT72690_2025_2K→TPN257E`, `_4K→TPN256E`, `TV_NT72676→TPN258E` | `titanos/docs/02-firmware-api.md:80-82` |
-| CSS viewport | `width=1280` | `titanos/launcher/index.html:5` |
-| Build target | `es2019` | `titanos/launcher/vite.config.ts` |
-| Framework | Svelte 5, static SPA | `titanos/launcher/package.json` |
+| CSS viewport | `width=1280` | `titanos/app/src/app.html` |
+| Build target | `es2019` | `titanos/app/vite.config.ts` |
+| Framework | Svelte 5 + SvelteKit (adapter-node) | `titanos/app/package.json` |
 | Ad creative size seen | 1920×1080 | `titanos/docs/05-ads-and-tracking.md:49` |
 | Keycodes | back `461`/`8`; colours `403–406`; ch `401/402`; HbbTV `112–115` | `titanos/docs/02-firmware-api.md:56-65` |
 
