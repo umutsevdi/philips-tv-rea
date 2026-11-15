@@ -16,11 +16,19 @@ export interface TvContext {
   app?: string;
 }
 
+const REQUEST_TIMEOUT_MS = 4000;
+
 async function api<T>(path: string, init?: RequestInit): Promise<T | null> {
   try {
-    const res = await fetch(`/api${path}`, init);
-    if (!res.ok) return null;
-    return (await res.json()) as T;
+    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS) : null;
+    try {
+      const res = await fetch(`/api${path}`, { ...init, signal: ctrl?.signal });
+      if (!res.ok) return null;
+      return (await res.json()) as T;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   } catch {
     return null;
   }

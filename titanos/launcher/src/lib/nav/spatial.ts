@@ -168,6 +168,25 @@ export function release(): void {
   if (f) f.el.classList.remove('pressed');
 }
 
+/** Pointer-mode environments (the TV's Internet browser moves a virtual
+    cursor with the D-pad instead of delivering arrow keys): hovering a
+    focusable counts as focusing it — without the scroll reveal, which
+    would fight the cursor (content moves under a stationary pointer,
+    hover refires on the next element, scroll loops). */
+export function hoverFocus(el: HTMLElement): void {
+  const f = all().find((x) => x.el === el);
+  if (!f || f.id === focusedId) return;
+  const prev = focusedId ? registry.get(focusedId) : undefined;
+  if (prev) {
+    prev.el.classList.remove('focused');
+    prev.el.classList.remove('pressed');
+  }
+  focusedId = f.id;
+  f.el.classList.add('focused');
+  f.el.focus({ preventScroll: true });
+  markShelves(f.el);
+}
+
 export function focus(id: string, pushStack = true): void {
   const f = registry.get(id);
   if (!f) return;

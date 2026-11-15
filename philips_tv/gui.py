@@ -467,8 +467,9 @@ class TVGui:
                 result = fn()
                 self.root.after(0, lambda: on_done(result))
             except Exception as exc:  # noqa: BLE001
-                self.root.after(0, lambda: (on_error(str(exc)) if on_error else
-                                            self.status_var.set(f"error: {exc}")))
+                msg = str(exc)
+                self.root.after(0, lambda: (on_error(msg) if on_error else
+                                            self.status_var.set(f"error: {msg}")))
         threading.Thread(target=runner, daemon=True).start()
 
     def _poll(self):

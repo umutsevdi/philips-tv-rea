@@ -1,0 +1,107 @@
+<!doctype html>
+<!-- U1 probe (docs/09): which parts of the firmware-injected window dialect
+     does THIS browsing context actually have? Served as a plain file (no
+     build step) so it runs in the TV's Internet browser, in the launcher
+     webview, and on a laptop alike. Open http://<host>/probe.html. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1280, initial-scale=1" />
+<title>U1 bridge probe</title>
+<style>
+  body { background:#10141c; color:#e8edf2; font:14px/1.5 monospace; margin:24px 32px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .verdict { font-size:16px; font-weight:bold; padding:8px 12px; border-radius:6px;
+             display:inline-block; margin:8px 0 16px; }
+  .present { background:rgba(83,210,225,.15); color:#53d2e1; }
+  .absent  { background:rgba(242,163,60,.15); color:#f2a33c; }
+  table { border-collapse:collapse; min-width:640px; }
+  td, th { border:1px solid rgba(232,237,242,.12); padding:4px 12px; text-align:left; }
+  th { color:#8a94a6; font-weight:normal; }
+  .fn { color:#8a94a6; } .fn.yes { color:#e8edf2; }
+  button { font:14px monospace; background:#212a35; color:#e8edf2;
+           border:1px solid rgba(232,237,242,.2); border-radius:6px;
+           padding:8px 16px; margin:6px 8px 0 0; }
+  #out { white-space:pre-wrap; color:#53d2e1; margin-top:14px; min-height:1.5em; }
+  .meta { color:#8a94a6; margin-top:20px; }
+</style>
+</head>
+<body>
+<h1>U1 bridge probe</h1>
+<span id="verdict" class="verdict">checking…</span>
+<table id="t"><tr><th>window member</th><th>typeof</th></tr></table>
+<div id="btns"></div>
+<div id="out"></div>
+<div class="meta" id="meta"></div>
+<script>
+(function () {
+  var NAMES = [
+    'loadApp', 'loadLocalUI', 'getToken', 'refreshToken', 'getCountry',
+    'getLanguage', 'getDeviceId', 'getDeviceModel', 'getModelYear',
+    'getSWVersion', 'getPlatformConfig', 'getConnectedSourceList',
+    'NotifyLauncherVersion', 'launchLinearChannel', 'LaunchLinearChannel',
+    'GotoNetflix', 'GotoAIV', 'GotoOpenInternet', 'GotoFVPApp',
+    'GotoFVPProgram', 'getAit', 'ApplicationController',
+    'BrowserIpcPluginClass'
+  ];
+  var t = document.getElementById('t');
+  var present = 0;
+  NAMES.forEach(function (n) {
+    var ty = typeof window[n];
+    if (ty !== 'undefined') present++;
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td class="fn' + (ty !== 'undefined' ? ' yes' : '') + '">window.' + n +
+      '</td><td>' + ty + '</td>';
+    t.appendChild(tr);
+  });
+  var v = document.getElementById('verdict');
+  if (present > 0) {
+    v.textContent = 'FIRMWARE DIALECT PRESENT (' + present + '/' + NAMES.length + ' members)';
+    v.className = 'verdict present';
+  } else {
+    v.textContent = 'NO FIRMWARE DIALECT IN THIS CONTEXT (0/' + NAMES.length + ')';
+    v.className = 'verdict absent';
+  }
+
+  function run(label, fn) {
+    var out = document.getElementById('out');
+    try { out.textContent = label + ' → ' + fn(); }
+    catch (e) { out.textContent = label + ' → threw: ' + e.message; }
+  }
+  var btns = document.getElementById('btns');
+  function add(label, fn) {
+    var b = document.createElement('button');
+    b.textContent = label;
+    b.onclick = function () { run(label, fn); };
+    btns.appendChild(b);
+  }
+  if (typeof window.getCountry === 'function')
+    add('getCountry()', function () { return window.getCountry(); });
+  if (typeof window.getLanguage === 'function')
+    add('getLanguage()', function () { return window.getLanguage(); });
+  if (typeof window.getDeviceModel === 'function')
+    add('getDeviceModel()', function () { return window.getDeviceModel(); });
+  if (typeof window.getSWVersion === 'function')
+    add('getSWVersion()', function () { return window.getSWVersion(); });
+  if (typeof window.getToken === 'function')
+    add('getToken() (length only)', function () {
+      var t = window.getToken() || '';
+      return t ? 'token present, ' + t.length + ' chars' : 'null';
+    });
+  if (typeof window.loadApp === 'function')
+    add('loadApp(youtube)', function () {
+      window.loadApp('https://www.youtube.com/tv?launch=menu', 'YouTube', 'NetTVSpecial', '1080p');
+      return 'called';
+    });
+  if (typeof window.loadLocalUI === 'function')
+    add("loadLocalUI('settings')", function () {
+      window.loadLocalUI('settings');
+      return 'called';
+    });
+
+  document.getElementById('meta').textContent =
+    'UA: ' + navigator.userAgent + '  |  origin: ' + location.origin;
+})();
+</script>
+</body>
+</html>

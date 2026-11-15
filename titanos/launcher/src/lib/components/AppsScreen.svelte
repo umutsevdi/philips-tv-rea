@@ -13,13 +13,17 @@
   export let utilities: Tile[] = [];
   export let onselect: (tile: Tile) => void = () => {};
 
-  const PER_ROW = 6; // 6*172px + 5*24px = 1152px = safe-area width
+  const PER_ROW = 6; // max per row: 6*172px + 5*24px = 1152px = safe-area width
   function chunk(list: Tile[], size: number): Tile[][] {
     const out: Tile[][] = [];
     for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
     return out;
   }
-  $: rows = chunk(apps, PER_ROW);
+  /* Balanced split, like the home rows: 11 apps → 6/5, 7 apps → 4/3 —
+     never a lone tile stretched across the whole row. */
+  $: rowCount = Math.max(1, Math.ceil(apps.length / PER_ROW));
+  $: perRow = Math.ceil(apps.length / rowCount);
+  $: rows = chunk(apps, perRow);
   $: pinnedIds = $pins.ids;
 </script>
 
@@ -71,10 +75,10 @@
   }
   .grid-row + .grid-row { margin-top: 24px; }
   .grid-row :global(.app-tile) {
-    /* stretch to fill the row: flex-basis comes from the tile's own width,
-       free space is shared equally, capped at the span-3 card width */
-    flex: 1 1 auto;
-    max-width: var(--span-3);
+    /* equal shares of the full row width — no cap, so a short last row
+       still ends flush at the safe-area edge (3 tiles → 368px, 4 → 270px) */
+    flex: 1 1 0;
+    min-width: 0;
   }
   .pills {
     position: fixed;

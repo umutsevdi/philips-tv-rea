@@ -9,3 +9,6 @@ venv/
 # never commit TV credentials
 credentials.json
 *credentials*
+
+# proxy captures the launcher webview's boot URL (token) here
+titanos/proxy/access.log

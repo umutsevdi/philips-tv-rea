@@ -26,9 +26,8 @@
   import { launch } from './lib/launch/dispatch';
   import tilesJson from '../tiles.json';
 
-  /* Backend flag: demo until TV token flow verified (U4); flip to real data behind this. */
-  const USE_BACKEND = false;
-
+  /* Try-real-first boot (see onMount): no global flag — backend calls are
+     token-gated and fail soft to demo data per source (U4). */
   /* App catalog: loaded async (backend /me/apps + device FVP inventory,
      catalog.json fallback). Rendered immediately from the fallback so the
      first paint is never empty. */
@@ -102,7 +101,6 @@
 
   onMount(async () => {
     notifyVersion('0.1.0-poc');
-    catalog = await loadCatalog();
 
     if (new URLSearchParams(location.search).has('instant')) {
       showDemo();
@@ -111,30 +109,34 @@
       return;
     }
 
-    if (USE_BACKEND) {
-      const home = await fetchHome();
-      if (home) {
-        for (const list of home) {
-          if (list.type === 'apps_list' || list.type === 'favorites_list') {
-            const backend = (list.items ?? []).map((item) => ({
-              id: item.id,
-              name: item.title ?? 'App',
-              launch: item.deeplinkings?.[0]
-                ? specFromDeeplink(item.deeplinkings[0])
-                : { kind: 'deeplink' as const, url: item.deeplinking_url ?? '' },
-            }));
-            const seen = new Set(backend.map((t) => t.id));
-            baseTiles = [...backend, ...baseTiles.filter((t) => !seen.has(t.id))];
-          } else if (list.items?.length) {
-            contentRows = [...contentRows, { title: list.title ?? 'For you', items: list.items.slice(0, 12) }];
-          }
+    /* Try-real-first, demo fills the gaps (docs/04): every source below
+       fails soft — backend calls return null without the firmware token
+       (U4), the proxy's /api/channels returns null when the TV daemon is
+       down — so missing infrastructure degrades to demo data, per source. */
+    catalog = await loadCatalog(); // /me/apps + DEVICE_APPS → catalog.json
+
+    const home = await fetchHome(); // /me/pages, token-gated
+    if (home) {
+      for (const list of home) {
+        if (list.type === 'apps_list' || list.type === 'favorites_list') {
+          const backend = (list.items ?? []).map((item) => ({
+            id: item.id,
+            name: item.title ?? 'App',
+            launch: item.deeplinkings?.[0]
+              ? specFromDeeplink(item.deeplinkings[0])
+              : { kind: 'deeplink' as const, url: item.deeplinking_url ?? '' },
+          }));
+          const seen = new Set(backend.map((t) => t.id));
+          baseTiles = [...backend, ...baseTiles.filter((t) => !seen.has(t.id))];
+        } else if (list.items?.length) {
+          contentRows = [...contentRows, { title: list.title ?? 'For you', items: list.items.slice(0, 12) }];
         }
       }
-    } else {
-      showDemo();
     }
 
-    const chans = await fetchChannels();
+    showDemo(); // fills only what the real sources left empty
+
+    const chans = await fetchChannels(); // proxy → demo channels stay on failure
     if (chans?.length) {
       channelList = chans.slice(0, 20);
       demoNow = {}; // real EPG data arrives with a healthy TV daemon
@@ -147,6 +149,15 @@
   const lp = new LongPress((a) => {
     if (a === 'down') nav.move('down');
   });
+
+  /* Pointer-mode adapters: TV browser shells that drive a virtual cursor
+     never deliver arrow keys, so hover becomes focus there (and on the
+     desktop). Activation is the native click the browser already sends. */
+  function onPointerOver(e: MouseEvent) {
+    const el = e.target as HTMLElement | null;
+    const hit = el && el.closest && el.closest('.focusable');
+    if (hit) nav.hoverFocus(hit as HTMLElement);
+  }
 
   function onKeyDown(e: KeyboardEvent) {
     /* Dedicated remote app keys (Netflix/YouTube/…) bypass navigation. */
@@ -270,7 +281,7 @@
   }
 </script>
 
-<svelte:window on:keydown={onKeyDown} on:keyup={onKeyUp} />
+<svelte:window on:keydown={onKeyDown} on:keyup={onKeyUp} on:mouseover={onPointerOver} />
 
 <Ambient />
 
@@ -375,14 +386,14 @@
   }
   .quick-row::-webkit-scrollbar { display: none; }
   .quick-row.second { margin-top: 0; } /* row gap comes from its own paddings */
-  /* Stretch app tiles so every row ends flush at the safe-area edge even
-     when it holds fewer than 6 tiles: flex-basis is the tile's own 172px,
-     free space is shared equally, capped at the span-3 card width. Higher
-     specificity than the tile's own rule, so this wins on the home row. */
+  /* Stretch app tiles so every row ends flush at the safe-area edge:
+     flex-basis 0 gives the row's tiles equal shares of the full width
+     (6 tiles → 172px, 5 → 211px, 4 → 270px, 3 → 368px). min-width: 0
+     lets the ellipsising name shrink instead of forcing overflow. */
   .quick-row :global(.app-tile),
   .quick-row :global(.store-tile) {
-    flex: 1 1 auto;
-    max-width: var(--span-3);
+    flex: 1 1 0;
+    min-width: 0;
   }
   .mock-banner {
     position: fixed;

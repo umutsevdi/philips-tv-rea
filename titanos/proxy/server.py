@@ -23,7 +23,6 @@ import sys
 import time
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
@@ -77,6 +76,22 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=str(ARGS.dist), **kw)
 
+    LOG_FILE = Path(__file__).resolve().parent / "access.log"
+
+    def note(self):
+        """Append method + full path (incl. query) to access.log. When the
+        DNS-override test lands (docs/09 U2), the launcher webview opens
+        the pinned URL at an arbitrary path with the device token appended
+        — this captures it the moment it works (U4)."""
+        try:
+            with self.LOG_FILE.open("a", encoding="utf-8") as fh:
+                fh.write(
+                    f"{time.strftime('%Y-%m-%dT%H:%M:%S')} {self.command} {self.path}"
+                    f" UA={self.headers.get('User-Agent', '')}\n"
+                )
+        except OSError:
+            pass
+
     def log_message(self, fmt, *args):
         print(f"[proxy] {self.address_string()} {fmt % args}")
 
@@ -89,9 +104,18 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def spa_fallback(self):
+        """Any non-asset GET path serves the launcher: the webview may open
+        the pinned URL at any path (token appended); assets still 404. """
+        clean = self.path.split("?", 1)[0].split("#", 1)[0]
+        cand = Path(ARGS.dist) / clean.strip("/")
+        if not cand.is_file() and "." not in cand.name:
+            self.path = "/index.html"
+
     # -- API -----------------------------------------------------------
 
     def do_GET(self):
+        self.note()
         if self.path == "/api/channels":
             try:
                 resp = get_tv().get("/6/channeldb/tv")
@@ -107,9 +131,11 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception as exc:  # noqa: BLE001
                 self._json(502, {"error": str(exc)})
             return
+        self.spa_fallback()
         super().do_GET()
 
     def do_POST(self):
+        self.note()
         if self.path != "/api/tune":
             self._json(404, {"error": "not found"})
             return

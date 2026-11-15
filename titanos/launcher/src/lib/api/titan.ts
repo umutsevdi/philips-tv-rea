@@ -50,6 +50,7 @@ export type LaunchSpec =
   | { kind: 'deeplink'; url: string };
 
 const API_HOST = 'https://eu.app.titanos.tv';
+const REQUEST_TIMEOUT_MS = 4000;
 const ALLOWED_LIST_TYPES = new Set([
   'apps_list', 'favorites_list',
   'top_movies_list', 'on_now_list', // the plan's two content rows
@@ -61,9 +62,17 @@ function headers(tk: string): HeadersInit {
 
 async function get<T>(path: string, tk: string): Promise<T | null> {
   try {
-    const res = await fetch(`${API_HOST}${path}`, { headers: headers(tk) });
-    if (!res.ok) return null;
-    return (await res.json()) as T;
+    /* Abort after a bounded wait so an unreachable host can't stall boot;
+       engines without AbortController just lose the timeout (old Blink). */
+    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS) : null;
+    try {
+      const res = await fetch(`${API_HOST}${path}`, { headers: headers(tk), signal: ctrl?.signal });
+      if (!res.ok) return null;
+      return (await res.json()) as T;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   } catch {
     return null;
   }

@@ -3,9 +3,25 @@
    loadApp exactly like the stock launcher's dispatch order. */
 
 import {
-  loadApp, loadLocalUI, gotoNetflix, gotoAIV, launchFVP, tuneLinearChannel,
+  loadApp, loadLocalUI, gotoNetflix, gotoAIV, launchFVP, tuneLinearChannel, hasFirmware,
 } from '../bridge/device';
 import type { LaunchSpec } from '../api/titan';
+
+/** Degraded mode (no firmware dialect — a generic browser shell): navigate
+    to the URL. In TV browser shells window.open is caught by the popup
+    blocker (the "popup created" notification), so navigation is same-tab
+    there and Back returns via history; desktop keeps the console mock. */
+const TV_SHELL = /Vewd|Whale|HbbTV|SmartTV|SMART-TV|NetCast|Tizen|Web0S|Philips|armv\d|Android/i
+  .test(navigator.userAgent);
+
+function openFallback(url: string, what: string): void {
+  if (TV_SHELL) {
+    console.info(`[launch] no firmware bridge, navigating: ${url}`);
+    window.location.assign(url);
+  } else {
+    console.info(`[mock] ${what}: ${url}`);
+  }
+}
 
 export function launch(spec: LaunchSpec): void {
   switch (spec.kind) {
@@ -19,20 +35,24 @@ export function launch(spec: LaunchSpec): void {
       loadLocalUI(spec.uiId);
       break;
     case 'webapp':
-      if (spec.url) loadApp(spec.url, spec.name, spec.appType, spec.resolution);
-      else console.info('[launch] webapp URL not configured yet (see docs/09 U11)');
+      if (!spec.url) { console.info('[launch] webapp URL not configured yet (see docs/09 U11)'); break; }
+      if (hasFirmware()) loadApp(spec.url, spec.name, spec.appType, spec.resolution);
+      else openFallback(spec.url, spec.name);
       break;
     case 'netflix':
-      gotoNetflix(spec.url ?? '');
+      if (spec.url && !hasFirmware()) openFallback(spec.url, 'Netflix');
+      else gotoNetflix(spec.url ?? '');
       break;
     case 'prime':
       gotoAIV();
       break;
     case 'fvp':
-      launchFVP(spec.url);
+      if (hasFirmware()) launchFVP(spec.url);
+      else openFallback(spec.url, 'FVP app');
       break;
     case 'deeplink':
-      window.open(spec.url, '_blank');
+      if (TV_SHELL) window.location.assign(spec.url);
+      else window.open(spec.url, '_blank');
       break;
   }
 }

@@ -28,8 +28,10 @@ python3 ../proxy/server.py --tv 192.168.1.239 --port 8080
 - Broadcast tile: probes `launchLinearChannel`, then `loadLocalUI`-class
   bridges (U1 origin-gating still unverified — see docs/09).
 - App rows: tier-1 natives + tier-2 bridges (Live TV, Netflix, Prime Video)
-  plus pinned catalog apps, balanced across two rows so stretch fills every
-  row flush; the **All apps** tile always terminates the last row.
+  plus pinned catalog apps, balanced across two rows; tiles are equal
+  shares of the full row width (`flex-basis: 0`), so every row ends flush
+  at the safe-area edge whatever its count; the **All apps** tile always
+  terminates the last row.
 - Apps screen: the third-party catalog. Three sources merged by id
   (docs/03): `catalog.json` (committed fallback) → backend `/me/apps`
   (engages when the token probe lands, 09/U4) → device `DEVICE_APPS` FVP
@@ -45,19 +47,31 @@ python3 ../proxy/server.py --tv 192.168.1.239 --port 8080
   launcher's show volume is mostly advertising; we don't imitate it.
 - Launch dispatch mirrors docs/03: `loadLocalUI` natives, Netflix/AIV
   bridges, FVP via `getAit` → AIT deeplink, generic `loadApp` webapps.
+  Without the dialect, URL-carrying specs degrade to same-tab navigation
+  in TV browser shells (popup-blocker-safe; Back returns via history) and
+  stay console-mocked on desktop.
 - Remote navigation: D-pad spatial focus; vertical moves are row-banded
   (nearest visual row always wins, so sparse/capped rows never get skipped
   by a far column match), column memory within rows, back key (461) stack,
   colour keys, focus persistence, home/apps view scoping, glass dialogs
-  (exit confirm, app options).
+  (exit confirm, app options). Pointer-mode adapters: in browser shells
+  that drive a virtual cursor (the TV's Internet app), hover focuses and
+  the native click activates — the real deployment (webview via DNS
+  override) delivers D-pad keydowns directly, as the stock launcher does.
 - Channel cards: from the TV's `/6/channeldb/tv` via the proxy; OK tunes
   by digit keys.
+- Try-real-first boot: every source is attempted at load and fails soft to
+  demo data per source — `/me/apps` + `/me/pages` return null without the
+  firmware token (U4), the proxy's channels return null on a dead daemon,
+  so demo content fills only what stayed empty. All fetches are bounded
+  (4 s abort) so an unreachable host can't stall boot; `?instant` skips
+  the network entirely for fast UI work.
 - Old-Blink safety: no flex `gap`, no `aspect-ratio` without fallback, no
   `backdrop-filter`, no `inset` shorthand — everything margin/flow based.
 
 ## Performance constraints (docs/08)
 
-- Bundle: ~34 KB gz total (budget 150 KB). Lucide icons are named
+- Bundle: ~35 KB gz total (budget 150 KB). Lucide icons are named
   imports — never `import *`.
 - Animations: transform/opacity only, ≤200 ms, none on the keypress path.
 - Keydown handler defers work with `setTimeout(..., 0)`; scroll uses rAF.
@@ -66,11 +80,25 @@ python3 ../proxy/server.py --tv 192.168.1.239 --port 8080
   focused card centered in the padded box, vertical scrollers keep their
   padding visible as the resting inset (hero's top gap can't be scrolled
   away). Instant fallback where smooth scrolling is unsupported.
-- Build target es2019 for the TV's older Blink.
+- Build target es2019 for the TV's older Blink, plus a post-build HTML fix
+  (`scripts/fix-html.mjs`): the bundle is served as a classic `defer`
+  script — a `type="module"` tag is silently ignored by engines without
+  module support (the TV's browser app showed a blank page where a phone
+  rendered fine). `index.html` also inlines small shims
+  (`Promise.finally`, `replaceAll`, `globalThis`, `ResizeObserver`) and an
+  on-screen `launch-debug` error bar that surfaces boot failures on the TV
+  itself.
 
 ## Open on-device probes (docs/09)
 
 1. U1: are `window.loadApp`/bridges available off the launcher origin?
+   **Partially answered on-device:** the Internet browser app has none of
+   the injected members (probe verdict: 0/N) — the dialect is bound to the
+   launcher webview. Open `probe.html` (built into `dist/`, no build step)
+   in any context to re-run: table of `typeof` per member, read-only
+   getters, live `loadApp`/`loadLocalUI` test buttons, UA + origin footer.
+   Remaining half of U1: serve our page *from the pinned launcher origin*
+   and re-probe (needs the DNS-override experiment, U2).
 2. Keycode capture: confirm 461 back and 401–406 colour keys on-device.
 3. Broadcast chain: which of `launchLinearChannel`/`loadLocalUI`/AIT works?
 4. `getToken()` header format (U4) if the backend rejects our Bearer guess.
