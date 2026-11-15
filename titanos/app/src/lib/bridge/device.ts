@@ -157,10 +157,17 @@ export function language(): string {
   try { return w.getLanguage?.() ?? 'en'; } catch { return 'en'; }
 }
 
-export function deviceInfo(): { model: string; sw: string } {
+/** Model + firmware. `null` when the firmware dialect is absent (a plain
+    browser context has no getDeviceModel) — callers hide the label rather
+    than printing a meaningless "unknown". */
+export function deviceInfo(): { model: string | null; sw: string | null } {
+  const a = api();
   try {
-    return { model: w.getDeviceModel?.() ?? 'unknown', sw: w.getSWVersion?.() ?? 'unknown' };
-  } catch { return { model: 'unknown', sw: 'unknown' }; }
+    return {
+      model: a.getDeviceModel?.() ?? null,
+      sw: a.getSWVersion?.() ?? null,
+    };
+  } catch { return { model: null, sw: null }; }
 }
 
 export function notifyVersion(version: string): void {

@@ -89,7 +89,7 @@ function commonParams(): Record<string, string> {
     market: country(),
     device: 'tv',
     locale: language(),
-    firmware: deviceInfo().sw,
+    firmware: deviceInfo().sw ?? 'unknown',
   };
 }
 
@@ -148,7 +148,7 @@ export async function fetchAppCatalog(): Promise<Tile[]> {
   const tk = bestToken();
   if (!tk) return [];
   const { data, rotated } = await get<unknown>(
-    withParams('/apps', { deviceModel: deviceInfo().model }), tk);
+    withParams('/apps', { deviceModel: deviceInfo().model ?? 'unknown' }), tk);
   rememberTokens(rotated);
   const items: BackendApp[] = Array.isArray(data)
     ? (data as BackendApp[])

@@ -40,8 +40,10 @@
 <header>
   <div class="left">
     <Clock />
-    <span class="divider"></span>
-    <span class="meta">{info.model}</span>
+    {#if info.model}
+      <span class="divider" aria-hidden="true"></span>
+      <span class="meta">{info.model}</span>
+    {/if}
   </div>
   <div class="right">
     {#if online}
@@ -82,17 +84,24 @@
     display: flex;
     align-items: center;
   }
-  .left > * + *,
   .right > * + * { margin-left: 14px; }
+  /* Explicit margins, not `.left > * + *`: Svelte scopes that combinator,
+     and the element preceding the divider is the Clock component's own
+     <span> (different scope) — the rule silently never matched, which is
+     why the divider sat flush against the clock. */
   .divider {
     width: 1px;
-    height: 22px;
+    height: 16px;              /* matches the meta's 12px/1.4 text box */
+    margin: 0 14px 6px;        /* same 6px bottom inset as .meta */
     background: var(--faint);
     opacity: 0.4;
+    align-self: flex-end;      /* share the meta's baseline, not the clock's centre */
   }
   .meta {
     font-size: var(--fs-caption);
     color: var(--faint);
+    align-self: flex-end;
+    padding-bottom: 6px;
   }
   .status {
     display: flex;
